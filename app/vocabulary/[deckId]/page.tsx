@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { StudyBeeNavbar } from "@/components/layout/StudyBeeNavbar";
 import { AddCardDialog } from "@/components/vocabulary/AddCardDialog";
+import { ImportVocabularyDialog } from "@/components/vocabulary/ImportVocabularyDialog";
 import { VocabularyBreadcrumb } from "@/components/vocabulary/VocabularyBreadcrumb";
 import {
   Dialog,
@@ -543,6 +544,7 @@ function DeckHeader({
             <PlayCircle className="h-4 w-4" />
             Học ngay
           </Link>
+          <ImportVocabularyDialog deckId={deckId} onImported={onCardCreated} />
           <AddCardDialog
             deckId={deckId}
             onCardCreated={onCardCreated}

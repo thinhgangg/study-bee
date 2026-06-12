@@ -781,15 +781,16 @@ function VocabularyCard({
           <VocabularyCardImage imageUrl={card.image_url} alt={card.word} />
 
           <div className="min-w-0 flex-1">
-            <div className="mb-2 flex min-h-[24px] flex-wrap items-center gap-1.5">
-              {card.part_of_speech && (
-                <span className="rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-bold text-yellow-700">
-                  {card.part_of_speech}
-                </span>
-              )}
-
+            <div className="mb-2 flex min-h-[24px] items-start justify-between gap-2">
+              <div className="min-w-0">
+                {card.part_of_speech && (
+                  <span className="inline-flex rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-bold text-yellow-700">
+                    {card.part_of_speech}
+                  </span>
+                )}
+              </div>
               <span
-                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-bold ${status.className}`}
+                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-bold ${status.className}`}
               >
                 <StatusIcon className="h-3.5 w-3.5" />
                 {status.label}

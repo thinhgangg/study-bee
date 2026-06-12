@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   BookOpen,
@@ -31,6 +31,8 @@ export function VocabularyNodeCard({
   deckHref,
   studyHref,
   variant = "mine",
+  menuOpen,
+  onMenuOpenChange,
 }: {
   node: VocabularyNode;
   editable: boolean;
@@ -43,9 +45,11 @@ export function VocabularyNodeCard({
   deckHref?: (node: VocabularyNode) => string;
   studyHref?: (node: VocabularyNode) => string;
   variant?: "mine" | "community" | "saved";
+  menuOpen: boolean;
+  onMenuOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const isFolder = node.type === "folder";
   const isCommunity = variant === "community";
   const isSaved = variant === "saved";
@@ -63,11 +67,35 @@ export function VocabularyNodeCard({
 
   function openNode() {
     if (menuOpen) {
-      setMenuOpen(false);
+      onMenuOpenChange(false);
       return;
     }
     router.push(openHref);
   }
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        onMenuOpenChange(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onMenuOpenChange(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen, onMenuOpenChange]);
 
   return (
     <article
@@ -110,6 +138,7 @@ export function VocabularyNodeCard({
 
           {editable && (
             <div
+              ref={menuRef}
               className="relative z-30"
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
@@ -121,7 +150,7 @@ export function VocabularyNodeCard({
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  setMenuOpen((current) => !current);
+                  onMenuOpenChange(!menuOpen);
                 }}
                 className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-yellow-50 hover:text-gray-900 aria-expanded:bg-yellow-50 aria-expanded:text-gray-900"
               >
@@ -133,7 +162,7 @@ export function VocabularyNodeCard({
                     icon={Edit3}
                     label="Chỉnh sửa"
                     onClick={() => {
-                      setMenuOpen(false);
+                      onMenuOpenChange(false);
                       onRename(node);
                     }}
                   />
@@ -141,7 +170,7 @@ export function VocabularyNodeCard({
                     icon={MoveRight}
                     label="Di chuyển"
                     onClick={() => {
-                      setMenuOpen(false);
+                      onMenuOpenChange(false);
                       onMove(node);
                     }}
                   />
@@ -150,7 +179,7 @@ export function VocabularyNodeCard({
                     icon={Trash2}
                     label="Xóa"
                     onClick={() => {
-                      setMenuOpen(false);
+                      onMenuOpenChange(false);
                       onDelete(node);
                     }}
                   />

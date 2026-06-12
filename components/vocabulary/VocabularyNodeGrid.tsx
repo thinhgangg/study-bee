@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { BookOpen, FolderPlus } from "lucide-react";
 import type { VocabularyNode } from "@/lib/vocabularyTree";
 import { VocabularyNodeCard } from "@/components/vocabulary/VocabularyNodeCard";
@@ -29,6 +30,8 @@ export function VocabularyNodeGrid({
   studyHref?: (node: VocabularyNode) => string;
   variant?: "mine" | "community" | "saved";
 }) {
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
   if (nodes.length === 0) {
     return (
       <div className="rounded-3xl border border-dashed border-yellow-300 bg-white/80 px-6 py-16 text-center shadow-sm shadow-yellow-100/60">
@@ -61,6 +64,8 @@ export function VocabularyNodeGrid({
           deckHref={deckHref}
           studyHref={studyHref}
           variant={variant}
+          menuOpen={openMenuId === node.id}
+          onMenuOpenChange={(open) => setOpenMenuId(open ? node.id : null)}
         />
       ))}
     </div>

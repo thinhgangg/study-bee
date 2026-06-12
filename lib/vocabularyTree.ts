@@ -19,6 +19,10 @@ export interface VocabularyNode {
   order_index: number;
   created_at: string;
   updated_at: string;
+  cloned_from_node_id?: string | null;
+  cloned_from_title?: string | null;
+  cloned_from_user_id?: string | null;
+  cloned_from_author_label?: string | null;
   child_folder_count: number;
   child_deck_count: number;
   card_count: number;
@@ -90,11 +94,13 @@ export async function fetchMyNodes(profileId: string, parentId: string | null) {
   return fetchLegacyDeckNodes(profileId);
 }
 
-export async function fetchCommunityNodes(parentId: string | null) {
+export async function fetchCommunityNodes(
+  parentId: string | null,
+  profileId?: string | null,
+) {
   const query = supabase
     .from("vocabulary_node_stats")
     .select("*")
-    .eq("visibility", "public")
     .order("order_index", { ascending: true })
     .order("created_at", { ascending: false });
 
@@ -102,9 +108,81 @@ export async function fetchCommunityNodes(parentId: string | null) {
     ? await query.eq("parent_id", parentId)
     : await query.is("parent_id", null);
 
-  if (!error && data) return data as VocabularyNode[];
+  if (!error && data) {
+    const nodes = data as VocabularyNode[];
+
+    const { data: visibleTree, error: treeError } = await supabase
+      .from("vocabulary_nodes")
+      .select("id, parent_id, type, visibility");
+
+    if (treeError) throw treeError;
+
+    const treeNodes = (visibleTree ?? []) as Array<{
+      id: string;
+      parent_id: string | null;
+      type: VocabularyNodeType;
+      visibility: VocabularyVisibility;
+    }>;
+    const treeById = new Map(treeNodes.map((node) => [node.id, node]));
+    const effectiveVisibilityById = new Map<string, VocabularyVisibility>();
+
+    function getEffectiveNodeVisibility(nodeId: string): VocabularyVisibility {
+      const cached = effectiveVisibilityById.get(nodeId);
+      if (cached) return cached;
+
+      const lineage: VocabularyVisibility[] = [];
+      const visited = new Set<string>();
+      let current = treeById.get(nodeId);
+
+      while (current && !visited.has(current.id)) {
+        visited.add(current.id);
+        lineage.push(current.visibility);
+        current = current.parent_id ? treeById.get(current.parent_id) : undefined;
+      }
+
+      const effective = getVisibilityLimit(
+        lineage.map((visibility) => ({ visibility })),
+      );
+      effectiveVisibilityById.set(nodeId, effective);
+      return effective;
+    }
+
+    const foldersWithPublicDecks = new Set<string>();
+
+    for (const deck of treeNodes.filter(
+      (node) =>
+        node.type === "deck" &&
+        getEffectiveNodeVisibility(node.id) === "public",
+    )) {
+      let currentParentId = deck.parent_id;
+      const visited = new Set<string>();
+
+      while (currentParentId && !visited.has(currentParentId)) {
+        visited.add(currentParentId);
+        foldersWithPublicDecks.add(currentParentId);
+        currentParentId = treeById.get(currentParentId)?.parent_id ?? null;
+      }
+    }
+
+    const publicNodes = nodes.filter(
+      (node) =>
+        getEffectiveNodeVisibility(node.id) === "public" &&
+        (node.type === "deck" || foldersWithPublicDecks.has(node.id)),
+    );
+
+    if (!profileId) return resetNodesProfileProgress(publicNodes);
+    return enrichNodesWithProfileProgress(publicNodes, profileId);
+  }
   if (isMissingVocabularyTree(error)) return [];
   throw error;
+}
+
+export function getVisibilityLimit(
+  ancestors: Array<Pick<VocabularyNode, "visibility">>,
+): VocabularyVisibility {
+  if (ancestors.some((node) => node.visibility === "private")) return "private";
+  if (ancestors.some((node) => node.visibility === "unlisted")) return "unlisted";
+  return "public";
 }
 
 export async function fetchSavedNodes(profileId: string) {
@@ -256,6 +334,14 @@ async function enrichNodesWithProfileProgress(
   });
 }
 
+function resetNodesProfileProgress<T extends VocabularyNode>(nodes: T[]) {
+  return nodes.map((node) => ({
+    ...node,
+    studied_count: 0,
+    due_count: 0,
+  }));
+}
+
 export async function fetchSavedNodeIds(profileId: string) {
   const { data, error } = await supabase
     .from("vocabulary_saved_nodes")
@@ -301,12 +387,17 @@ export async function fetchBreadcrumb(nodeId: string | null) {
 export async function fetchFolderOptions(profileId: string) {
   const { data, error } = await supabase
     .from("vocabulary_nodes")
-    .select("id, parent_id, title")
+    .select("id, parent_id, title, visibility")
     .eq("user_id", profileId)
     .eq("type", "folder")
     .order("title", { ascending: true });
 
-  if (!error && data) return data as Pick<VocabularyNode, "id" | "parent_id" | "title">[];
+  if (!error && data) {
+    return data as Pick<
+      VocabularyNode,
+      "id" | "parent_id" | "title" | "visibility"
+    >[];
+  }
   if (isMissingVocabularyTree(error)) return [];
   throw error;
 }
@@ -412,9 +503,17 @@ export async function renameVocabularyNode(profileId: string, input: RenameNodeI
 export async function moveVocabularyNode(profileId: string, nodeId: string, parentId: string | null) {
   if (nodeId === parentId) throw new Error("Không thể di chuyển vào chính nó.");
 
+  const existing = await fetchNode(nodeId);
+  if (!existing || existing.user_id !== profileId) {
+    throw new Error("Không tìm thấy thư mục hoặc bộ từ.");
+  }
+
   const { error } = await supabase
     .from("vocabulary_nodes")
-    .update({ parent_id: parentId, updated_at: new Date().toISOString() })
+    .update({
+      parent_id: parentId,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", nodeId)
     .eq("user_id", profileId);
 
@@ -447,17 +546,29 @@ export async function deleteVocabularyNode(profileId: string, node: VocabularyNo
 }
 
 export async function copyCommunityNode(profileId: string, nodeId: string, parentId: string | null) {
-  const { error } = await supabase.rpc("copy_vocabulary_node_tree", {
+  const { data, error } = await supabase.rpc("copy_vocabulary_node_tree", {
     source_node_id: nodeId,
     target_user_id: profileId,
     target_parent_id: parentId,
   });
 
   if (error) {
+    const missingRpc = error.code === "PGRST202" || error.code === "42883";
+    if (isUnavailableCommunityNode(error)) {
+      throw new Error("Bộ từ này không còn ở chế độ công khai và không thể lưu/sao chép.");
+    }
     throw new Error(
-      "Chưa có RPC copy_vocabulary_node_tree. Hãy chạy migration kèm function copy cây trước.",
+      missingRpc
+        ? "Supabase chưa nhận RPC copy_vocabulary_node_tree. Hãy chạy lại migration và reload schema cache."
+        : `Không thể sao chép: ${error.message}${error.code ? ` (${error.code})` : ""}`,
     );
   }
+
+  if (typeof data !== "string") {
+    throw new Error("Không nhận được mã của bản sao vừa tạo.");
+  }
+
+  return data;
 }
 
 export async function saveCommunityNode(profileId: string, nodeId: string) {
@@ -472,6 +583,9 @@ export async function saveCommunityNode(profileId: string, nodeId: string) {
   if (error) {
     if (isMissingCommunityTables(error)) {
       throw new Error("Cần chạy migration community_saves_reports để bật Lưu về học.");
+    }
+    if (isUnavailableCommunityNode(error)) {
+      throw new Error("Bộ từ này không còn ở chế độ công khai và không thể lưu/sao chép.");
     }
     throw error;
   }
@@ -590,5 +704,20 @@ function isMissingCommunityTables(error: unknown) {
     message.includes("vocabulary_reports") ||
     message.includes("Could not find the table") ||
     message.includes("schema cache")
+  );
+}
+
+function isUnavailableCommunityNode(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const message = "message" in error ? String(error.message) : "";
+  const code = "code" in error ? String(error.code) : "";
+
+  return (
+    code === "P0001" ||
+    code === "23503" ||
+    code === "42501" ||
+    message.includes("Source node is not effectively public or does not exist") ||
+    message.includes("violates row-level security policy") ||
+    message.includes("vocabulary_saved_nodes_node_id_fkey")
   );
 }

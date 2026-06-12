@@ -25,12 +25,6 @@ function DialogPortal({
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />;
 }
 
-function DialogClose({
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Close>) {
-  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
-}
-
 function DialogOverlay({
   className,
   ...props
@@ -39,7 +33,7 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "fixed inset-y-0 left-0 isolate z-50 h-dvh w-screen bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className,
       )}
       {...props}
@@ -98,12 +92,8 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
 
 function DialogFooter({
   className,
-  showCloseButton = false,
-  children,
   ...props
-}: React.ComponentProps<"div"> & {
-  showCloseButton?: boolean;
-}) {
+}: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-footer"
@@ -112,14 +102,7 @@ function DialogFooter({
         className,
       )}
       {...props}
-    >
-      {children}
-      {showCloseButton && (
-        <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
-        </DialogPrimitive.Close>
-      )}
-    </div>
+    />
   );
 }
 
@@ -157,13 +140,10 @@ function DialogDescription({
 
 export {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogOverlay,
-  DialogPortal,
   DialogTitle,
   DialogTrigger,
 };

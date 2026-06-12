@@ -5,26 +5,33 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Bell,
-  BookOpenCheck,
+  BookA,
   ChevronDown,
-  GraduationCap,
-  LayoutDashboard,
   LogOut,
   Menu,
-  Mic2,
   Settings,
-  Target,
   User,
   X,
+  Dumbbell,
+  ClipboardCheck,
+  Route,
+  CreditCard,
 } from "lucide-react";
 import { StudyBeeLogo } from "@/components/StudyBeeLogo";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const navItems = [
-  { label: "Từ vựng", href: "/vocabulary", icon: BookOpenCheck },
-  { label: "Luyện kỹ năng", href: "/#features", icon: Mic2 },
-  { label: "Mock Test", href: "/#features", icon: Target },
-  { label: "Lộ trình", href: "/#features", icon: LayoutDashboard },
-  { label: "Bảng giá", href: "/#pricing", icon: GraduationCap },
+  { label: "Từ vựng", href: "/vocabulary", icon: BookA },
+  { label: "Luyện kỹ năng", href: "/#features", icon: Dumbbell },
+  { label: "Mock Test", href: "/#features", icon: ClipboardCheck },
+  { label: "Lộ trình", href: "/#features", icon: Route },
+  { label: "Bảng giá", href: "/#pricing", icon: CreditCard },
 ];
 
 interface StudyBeeNavbarProps {
@@ -41,22 +48,17 @@ export function StudyBeeNavbar({
   onSignOut,
 }: StudyBeeNavbarProps) {
   const pathname = usePathname();
-  const [accountOpen, setAccountOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const accountMenuRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const isLoggedIn = Boolean(userEmail);
   const initials = userEmail.trim()[0]?.toUpperCase() || "B";
 
   useEffect(() => {
-    if (!accountOpen && !mobileMenuOpen) return;
+    if (!mobileMenuOpen) return;
 
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Node;
 
-      if (!accountMenuRef.current?.contains(target)) {
-        setAccountOpen(false);
-      }
       if (!mobileMenuRef.current?.contains(target)) {
         setMobileMenuOpen(false);
       }
@@ -64,11 +66,10 @@ export function StudyBeeNavbar({
 
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [accountOpen, mobileMenuOpen]);
+  }, [mobileMenuOpen]);
 
   async function handleSignOut() {
     await onSignOut?.();
-    setAccountOpen(false);
     setMobileMenuOpen(false);
   }
 
@@ -119,51 +120,40 @@ export function StudyBeeNavbar({
                 <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-yellow-400 ring-2 ring-white" />
               </button>
 
-              <div ref={accountMenuRef} className="relative">
-                <button
-                  type="button"
-                  onClick={() => setAccountOpen((value) => !value)}
-                  aria-expanded={accountOpen}
-                  className="flex items-center gap-2 rounded-full border border-yellow-100 bg-white py-1 pl-1 pr-3 text-sm font-semibold text-gray-700 shadow-sm shadow-yellow-100/50 transition-colors hover:bg-yellow-50"
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-yellow-300 font-heading text-sm font-bold text-gray-900">
-                    {initials}
-                  </span>
-                  <span className="hidden max-w-28 truncate sm:inline">
-                    {userEmail || "StudyBee"}
-                  </span>
-                  <ChevronDown className="h-4 w-4 text-gray-400" />
-                </button>
-
-                {accountOpen && (
-                  <div className="absolute right-0 mt-3 w-56 overflow-hidden rounded-2xl border border-yellow-100 bg-white p-2 shadow-xl shadow-yellow-100/70">
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-yellow-50"
-                      onClick={() => setAccountOpen(false)}
-                    >
-                      <User className="h-4 w-4 text-yellow-600" />
-                      Hồ sơ
-                    </button>
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-yellow-50"
-                      onClick={() => setAccountOpen(false)}
-                    >
-                      <Settings className="h-4 w-4 text-yellow-600" />
-                      Cài đặt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSignOut}
-                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-600 hover:bg-rose-50"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      Đăng xuất
-                    </button>
-                  </div>
-                )}
-              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 rounded-full border border-yellow-100 bg-white py-1 pl-1 pr-3 text-sm font-semibold text-gray-700 shadow-sm shadow-yellow-100/50 outline-none transition-colors hover:bg-yellow-50 focus:outline-none focus-visible:outline-none focus-visible:ring-0 data-[state=open]:bg-yellow-50"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-yellow-300 font-heading text-sm font-bold text-gray-900">
+                      {initials}
+                    </span>
+                    <span className="hidden max-w-28 truncate sm:inline">
+                      {userEmail || "StudyBee"}
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem>
+                    <User className="text-yellow-600" />
+                    Hồ sơ
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Settings className="text-yellow-600" />
+                    Cài đặt
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => void handleSignOut()}
+                    className="text-rose-600 focus:bg-rose-50 focus:text-rose-700"
+                  >
+                    <LogOut />
+                    Đăng xuất
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ) : showAuthActions ? (
             <div className="flex items-center gap-2">

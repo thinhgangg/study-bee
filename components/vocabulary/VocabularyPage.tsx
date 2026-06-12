@@ -1,21 +1,34 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { StudyBeeNavbar } from "@/components/layout/StudyBeeNavbar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { HoneycombPattern } from "@/components/ui/honeycomb-pattern";
 import { CreateDeckDialog } from "@/components/vocabulary/CreateDeckDialog";
 import { CreateFolderDialog } from "@/components/vocabulary/CreateFolderDialog";
+import { CopyNodeDialog } from "@/components/vocabulary/CopyNodeDialog";
 import { MoveNodeDialog } from "@/components/vocabulary/MoveNodeDialog";
 import { RenameNodeDialog } from "@/components/vocabulary/RenameNodeDialog";
 import { VocabularyBreadcrumb } from "@/components/vocabulary/VocabularyBreadcrumb";
 import {
-  PublicEmptyState,
+  VocabularyEmptyState,
   VocabularyGridSkeleton,
   VocabularyNodeGrid,
 } from "@/components/vocabulary/VocabularyNodeGrid";
 import {
-  copyCommunityNode,
   deleteVocabularyNode,
   fetchBreadcrumb,
   fetchCommunityNodes,
@@ -23,6 +36,7 @@ import {
   fetchSavedNodeIds,
   fetchSavedNodes,
   getCurrentProfile,
+  getVisibilityLimit,
   saveCommunityNode,
   unsaveCommunityNode,
   type VocabularyNode,
@@ -34,7 +48,7 @@ type VocabularyTab = "mine" | "community" | "saved";
 export function VocabularyPage({ folderId = null }: { folderId?: string | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const requestedTab = searchParams.get("tab") as VocabularyTab | null;
+  const requestedTab = searchParams.get("tab");
   const communityFolderId = searchParams.get("folder");
 
   const [profile, setProfile] = useState<VocabularyProfile | null>(null);
@@ -42,14 +56,20 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
   const [breadcrumb, setBreadcrumb] = useState<VocabularyNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [tab, setTab] = useState<VocabularyTab>(requestedTab ?? "mine");
   const [error, setError] = useState("");
   const [renameNode, setRenameNode] = useState<VocabularyNode | null>(null);
   const [moveNode, setMoveNode] = useState<VocabularyNode | null>(null);
+  const [copyNode, setCopyNode] = useState<VocabularyNode | null>(null);
+  const [deleteNode, setDeleteNode] = useState<VocabularyNode | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const activeTab = requestedTab ?? tab;
+  const activeTab: VocabularyTab =
+    requestedTab === "community" || requestedTab === "saved"
+      ? requestedTab
+      : "mine";
   const activeFolderId = activeTab === "community" ? communityFolderId : folderId;
   const editable = activeTab === "mine";
+  const ancestorVisibility = getVisibilityLimit(breadcrumb);
 
   const loadNodes = useCallback(async () => {
     setLoading(true);
@@ -62,7 +82,7 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
       const [nextNodes, nextBreadcrumb] =
         activeTab === "community"
           ? await Promise.all([
-              fetchCommunityNodes(activeFolderId),
+              fetchCommunityNodes(activeFolderId, currentProfile.id),
               fetchBreadcrumb(activeFolderId),
             ])
           : activeTab === "saved"
@@ -109,32 +129,18 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
     router.replace("/login");
   }
 
-  async function handleDelete(node: VocabularyNode) {
-    const confirmed = window.confirm(
-      node.type === "folder"
-        ? `Xóa thư mục "${node.title}" và toàn bộ nội dung bên trong?`
-        : `Xóa bộ từ "${node.title}" và các từ vựng bên trong?`,
-    );
-
-    if (!confirmed || !profile) return;
+  async function handleDelete() {
+    if (!deleteNode || !profile) return;
+    setDeleting(true);
 
     try {
-      await deleteVocabularyNode(profile.id, node);
+      await deleteVocabularyNode(profile.id, deleteNode);
+      setDeleteNode(null);
       await loadNodes();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Không thể xóa.");
-    }
-  }
-
-  async function handleCopy(node: VocabularyNode) {
-    if (!profile) return;
-    setError("");
-
-    try {
-      await copyCommunityNode(profile.id, node.id, null);
-      router.push("/vocabulary");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Không thể sao chép.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -214,33 +220,27 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
 
         <div className="rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm shadow-yellow-100/60">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="grid grid-cols-3 rounded-full border border-gray-100 bg-gray-50 p-1 text-xs font-bold text-gray-500">
-              {[
-                { value: "mine", label: "Bộ của tôi" },
-                { value: "community", label: "Cộng đồng" },
-                { value: "saved", label: "Đã lưu" },
-              ].map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => {
-                    setTab(item.value as VocabularyTab);
-                    router.push(
-                      item.value === "mine"
-                        ? "/vocabulary"
-                        : `/vocabulary?tab=${item.value}`,
-                    );
-                  }}
-                  className={`rounded-full px-3 py-2 transition-colors ${
-                    activeTab === item.value
-                      ? "bg-yellow-300 text-gray-900 shadow-sm"
-                      : "hover:text-gray-900"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+            <Tabs value={activeTab} className="gap-0">
+              <TabsList>
+                {[
+                  { value: "mine", label: "Bộ của tôi" },
+                  { value: "community", label: "Cộng đồng" },
+                  { value: "saved", label: "Đã lưu" },
+                ].map((item) => (
+                  <TabsTrigger key={item.value} value={item.value} asChild>
+                    <Link
+                      href={
+                        item.value === "mine"
+                          ? "/vocabulary"
+                          : `/vocabulary?tab=${item.value}`
+                      }
+                    >
+                      {item.label}
+                    </Link>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative w-full sm:w-72">
@@ -258,11 +258,13 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
                   <CreateFolderDialog
                     profileId={profile?.id}
                     parentId={activeFolderId}
+                    ancestorVisibility={ancestorVisibility}
                     onCreated={loadNodes}
                   />
                   <CreateDeckDialog
                     profileId={profile?.id}
                     parentId={activeFolderId}
+                    ancestorVisibility={ancestorVisibility}
                     onCreated={loadNodes}
                   />
                 </>
@@ -280,18 +282,28 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
         <div className="mt-6">
           {loading ? (
             <VocabularyGridSkeleton />
-          ) : activeTab === "saved" && filteredNodes.length === 0 ? (
-            <PublicEmptyState />
-          ) : activeTab === "community" && filteredNodes.length === 0 ? (
-            <PublicEmptyState />
+          ) : filteredNodes.length === 0 ? (
+            <VocabularyEmptyState
+              variant={
+                searchTerm.trim()
+                  ? "search"
+                  : activeTab === "saved"
+                    ? "saved"
+                    : activeTab === "community"
+                      ? "community"
+                      : activeFolderId
+                        ? "folder"
+                        : "mine"
+              }
+            />
           ) : (
             <VocabularyNodeGrid
               nodes={filteredNodes}
               editable={editable}
               onRename={setRenameNode}
-              onDelete={handleDelete}
+              onDelete={setDeleteNode}
               onMove={setMoveNode}
-              onCopy={activeTab === "community" ? handleCopy : undefined}
+              onCopy={activeTab === "community" ? setCopyNode : undefined}
               onSave={
                 activeTab === "community" || activeTab === "saved"
                   ? handleSave
@@ -328,6 +340,7 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
         profileId={profile?.id}
         node={renameNode}
         open={Boolean(renameNode)}
+        ancestorVisibility={ancestorVisibility}
         onOpenChange={(open) => !open && setRenameNode(null)}
         onSaved={loadNodes}
       />
@@ -338,36 +351,46 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
         onOpenChange={(open) => !open && setMoveNode(null)}
         onMoved={loadNodes}
       />
+      <CopyNodeDialog
+        profileId={profile?.id}
+        node={copyNode}
+        open={Boolean(copyNode)}
+        onOpenChange={(open) => !open && setCopyNode(null)}
+        onCopied={({ parentId }) => {
+          setCopyNode(null);
+          router.push(parentId ? `/vocabulary/folder/${parentId}` : "/vocabulary");
+        }}
+      />
+      <AlertDialog
+        open={Boolean(deleteNode)}
+        onOpenChange={(open) => !open && !deleting && setDeleteNode(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Xóa {deleteNode?.type === "folder" ? "thư mục" : "bộ từ"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteNode?.type === "folder"
+                ? `Thư mục "${deleteNode.title}" và toàn bộ nội dung bên trong sẽ bị xóa vĩnh viễn.`
+                : `Bộ từ "${deleteNode?.title ?? ""}" và các từ vựng bên trong sẽ bị xóa vĩnh viễn.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDelete();
+              }}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              {deleting ? "Đang xóa..." : "Xóa"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
-  );
-}
-
-function HoneycombPattern() {
-  return (
-    <svg
-      className="pointer-events-none absolute inset-0 h-full w-full opacity-70"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <defs>
-        <pattern
-          id="vocabulary-tree-honey"
-          x="0"
-          y="0"
-          width="56"
-          height="64"
-          patternUnits="userSpaceOnUse"
-        >
-          <polygon
-            points="28,2 52,16 52,48 28,62 4,48 4,16"
-            fill="none"
-            stroke="#FACC15"
-            strokeOpacity="0.18"
-            strokeWidth="0.8"
-          />
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" fill="url(#vocabulary-tree-honey)" />
-    </svg>
   );
 }

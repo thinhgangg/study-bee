@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -64,12 +65,13 @@ export default function LoginPage() {
 
       <div className="relative w-full max-w-[400px]">
         <div className="flex flex-col items-center rounded-3xl border border-yellow-100 bg-white p-7 shadow-2xl shadow-yellow-100/70 md:p-9">
-          <Link href="/">
+          <Link href="/" className="studybee-flying-logo">
             <img
-              src="/studybee-logo.svg"
+              src="/studybee-mascot.png"
               alt="StudyBee"
-              className="h-20 w-20 object-contain"
+              className="studybee-flying-bee h-20 w-20 object-contain"
             />
+            <span className="studybee-flying-shadow" aria-hidden="true" />
           </Link>
 
           <div className="mb-7 mt-4 text-center">
@@ -145,15 +147,23 @@ export default function LoginPage() {
               </button>
             </div>
 
-            <label className="flex items-center gap-3 pt-1 text-sm font-semibold text-gray-600">
-              <input
-                type="checkbox"
+            <div className="flex items-center gap-3 pt-1">
+              <Checkbox
+                id="remember-device"
                 checked={rememberDevice}
-                onChange={(event) => setRememberDevice(event.target.checked)}
-                className="h-5 w-5 rounded border-gray-300 text-yellow-500 focus:ring-yellow-400"
+                onCheckedChange={(checked) => {
+                  setRememberDevice(checked === true);
+                }}
+                className="h-5 w-5 rounded-md border-gray-300 data-[state=checked]:border-yellow-400 data-[state=checked]:bg-yellow-400 data-[state=checked]:text-gray-950"
               />
-              Ghi nhớ thiết bị này
-            </label>
+
+              <label
+                htmlFor="remember-device"
+                className="cursor-pointer text-sm font-semibold text-gray-600"
+              >
+                Ghi nhớ đăng nhập
+              </label>
+            </div>
 
             {errorMessage && (
               <div className="rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm font-medium text-rose-700">

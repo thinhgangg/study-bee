@@ -130,6 +130,13 @@
     scroll-padding-top: 4rem;
     scrollbar-gutter: stable;
   }
+
+  @supports (scrollbar-gutter: stable) {
+    html body[data-scroll-locked] {
+      margin-right: 0 !important;
+      padding-right: 0 !important;
+    }
+  }
   h1,
   h2,
   h3,
@@ -137,5 +144,61 @@
   h5,
   h6 {
     @apply font-heading;
+  }
+}
+
+@keyframes studybee-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(1.5deg);
+  }
+}
+
+@keyframes studybee-float-shadow {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: translateX(-50%) scaleX(1);
+  }
+  50% {
+    opacity: 0.1;
+    transform: translateX(-50%) scaleX(0.72);
+  }
+}
+
+@layer components {
+  .studybee-flying-logo {
+    --bee-delay: 0s;
+    position: relative;
+    display: inline-flex;
+    padding-bottom: 0.25rem;
+  }
+
+  .studybee-flying-bee {
+    animation: studybee-float 3.6s ease-in-out var(--bee-delay) infinite;
+    transform-origin: 50% 70%;
+    will-change: transform;
+  }
+
+  .studybee-flying-shadow {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 2.25rem;
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: rgb(15 23 42 / 35%);
+    filter: blur(4px);
+    animation: studybee-float-shadow 3.6s ease-in-out var(--bee-delay) infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studybee-flying-bee,
+  .studybee-flying-shadow {
+    animation: none;
   }
 }

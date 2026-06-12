@@ -6,13 +6,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   BookOpen,
-  BookOpenCheck,
+  BookmarkOff,
+  Bookmark,
   CheckCircle2,
   Clock3,
-  Copy,
+  CopyPlus,
   Edit3,
   Flag,
-  Heart,
   ImageIcon,
   PlayCircle,
   Plus,
@@ -20,19 +20,33 @@ import {
   Volume2,
 } from "lucide-react";
 import { StudyBeeNavbar } from "@/components/layout/StudyBeeNavbar";
+import { HoneycombPattern } from "@/components/ui/honeycomb-pattern";
 import { AddCardDialog } from "@/components/vocabulary/AddCardDialog";
+import { CopyNodeDialog } from "@/components/vocabulary/CopyNodeDialog";
 import { ImportVocabularyDialog } from "@/components/vocabulary/ImportVocabularyDialog";
 import { VocabularyBreadcrumb } from "@/components/vocabulary/VocabularyBreadcrumb";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
 import {
-  copyCommunityNode,
   fetchBreadcrumb,
   fetchNode,
   isCommunityNodeSaved,
@@ -149,36 +163,6 @@ function parseRelatedTerm(value: string): RelatedTerm {
   };
 }
 
-function HoneycombPattern() {
-  return (
-    <svg
-      className="pointer-events-none absolute inset-0 h-full w-full opacity-70"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <defs>
-        <pattern
-          id="deck-detail-honey"
-          x="0"
-          y="0"
-          width="56"
-          height="64"
-          patternUnits="userSpaceOnUse"
-        >
-          <polygon
-            points="28,2 52,16 52,48 28,62 4,48 4,16"
-            fill="none"
-            stroke="#FACC15"
-            strokeOpacity="0.16"
-            strokeWidth="0.8"
-          />
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" fill="url(#deck-detail-honey)" />
-    </svg>
-  );
-}
-
 export default function DeckDetailPage({
   params,
 }: {
@@ -206,6 +190,11 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
   const [filter, setFilter] = useState<CardFilter>("all");
   const [readOnly, setReadOnly] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [reportDetail, setReportDetail] = useState("");
+  const [reporting, setReporting] = useState(false);
   const communityBasePath =
     source === "saved" ? "/vocabulary?tab=saved" : "/vocabulary?tab=community";
 
@@ -234,7 +223,10 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
         throw new Error("Không tìm thấy hồ sơ người dùng.");
       }
 
-      const currentProfile = { id: profileData.id as string, email: user.email ?? "" };
+      const currentProfile = {
+        id: profileData.id as string,
+        email: user.email ?? "",
+      };
       setProfile(currentProfile);
 
       const node = await fetchNode(deckId);
@@ -457,33 +449,26 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
     }
   }
 
-  async function handleCopyCommunityDeck() {
-    if (!profile) return;
-    setError("");
-
-    try {
-      await copyCommunityNode(profile.id, deckId, null);
-      router.push("/vocabulary");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Không thể sao chép bộ này.");
-    }
-  }
-
   async function handleReportCommunityDeck() {
-    if (!profile) return;
-
-    const detail = window.prompt(
-      "Bạn muốn báo lỗi gì? Ví dụ: nội dung sai, spam, vi phạm, hình ảnh không phù hợp...",
-    );
-    if (!detail?.trim()) return;
+    if (!profile || !reportDetail.trim() || reporting) return;
 
     setError("");
+    setReporting(true);
 
     try {
-      await reportCommunityNode(profile.id, deckId, "content_issue", detail);
-      window.alert("Đã gửi báo lỗi. Cảm ơn bạn đã giúp StudyBee sạch hơn.");
+      await reportCommunityNode(
+        profile.id,
+        deckId,
+        "content_issue",
+        reportDetail.trim(),
+      );
+      setReportOpen(false);
+      setReportDetail("");
+      setReportSent(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Không thể gửi báo lỗi.");
+    } finally {
+      setReporting(false);
     }
   }
 
@@ -498,10 +483,10 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
             <BookOpen className="h-8 w-8" />
           </div>
           <h1 className="font-heading text-3xl font-bold">
-            Không tìm thấy bộ thẻ
+            Không tìm thấy bộ từ
           </h1>
           <p className="mt-2 max-w-md text-sm leading-relaxed text-gray-500">
-            Bộ thẻ này không tồn tại hoặc không thuộc tài khoản hiện tại.
+            Bộ từ này không tồn tại hoặc không thuộc tài khoản hiện tại.
           </p>
           <Link
             href="/vocabulary"
@@ -549,8 +534,8 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
               saved={saved}
               onCardCreated={loadDeck}
               onSave={handleSaveCommunityDeck}
-              onCopy={handleCopyCommunityDeck}
-              onReport={handleReportCommunityDeck}
+              onCopy={() => setCopyOpen(true)}
+              onReport={() => setReportOpen(true)}
             />
 
             <DeckToolbar
@@ -603,6 +588,77 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
         }}
         onMarkMastered={markAsMastered}
       />
+      <CopyNodeDialog
+        profileId={profile?.id}
+        node={deckNode}
+        open={copyOpen}
+        onOpenChange={setCopyOpen}
+        onCopied={({ parentId }) => {
+          setCopyOpen(false);
+          router.push(parentId ? `/vocabulary/folder/${parentId}` : "/vocabulary");
+        }}
+      />
+      <Dialog
+        open={reportOpen}
+        onOpenChange={(open) => {
+          if (reporting) return;
+          setReportOpen(open);
+          if (!open) setReportDetail("");
+        }}
+      >
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto border border-yellow-100 bg-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">
+              Báo lỗi nội dung
+            </DialogTitle>
+            <DialogDescription>
+              Mô tả vấn đề bạn nhận thấy để StudyBee có thể kiểm tra chính xác.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={reportDetail}
+            onChange={(event) => setReportDetail(event.target.value)}
+            placeholder="Ví dụ: nội dung sai, spam, vi phạm hoặc hình ảnh không phù hợp..."
+            rows={5}
+            autoFocus
+          />
+          <DialogFooter className="mx-0 mb-0 rounded-none border-0 bg-transparent p-0">
+            <Button
+              variant="outline"
+              onClick={() => setReportOpen(false)}
+              disabled={reporting}
+              className="h-10 rounded-full px-5 font-bold"
+            >
+              Hủy
+            </Button>
+            <Button
+              onClick={() => void handleReportCommunityDeck()}
+              disabled={!reportDetail.trim() || reporting}
+              className="h-10 rounded-full bg-gray-900 px-5 font-bold text-yellow-300 hover:bg-gray-700"
+            >
+              {reporting ? "Đang gửi..." : "Gửi báo lỗi"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={reportSent} onOpenChange={setReportSent}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Đã gửi báo lỗi</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cảm ơn bạn đã giúp StudyBee cải thiện nội dung cộng đồng.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => setReportSent(false)}
+              className="bg-gray-900 text-yellow-300 hover:bg-gray-700"
+            >
+              Đã hiểu
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }
@@ -638,6 +694,13 @@ function DeckHeader({
   onCopy: () => void | Promise<void>;
   onReport: () => void | Promise<void>;
 }) {
+  const studyLabel =
+    progress.percent <= 0
+      ? "Học ngay"
+      : progress.percent >= 100
+        ? "Ôn tập"
+        : "Học tiếp";
+
   return (
     <section className="rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm shadow-yellow-100/50 lg:p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -670,7 +733,7 @@ function DeckHeader({
             className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-gray-900 px-5 text-sm font-bold text-yellow-300 shadow-lg shadow-gray-900/10 transition-colors hover:bg-gray-700"
           >
             <PlayCircle className="h-4 w-4" />
-            Học ngay
+            {studyLabel}
           </Link>
           {readOnly ? (
             <>
@@ -680,15 +743,19 @@ function DeckHeader({
                 disabled={saved}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-yellow-400 px-5 text-sm font-bold text-gray-900 shadow-lg shadow-yellow-200/60 transition-colors hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                <Heart className={`h-4 w-4 ${saved ? "fill-current" : ""}`} />
-                {saved ? "Đã lưu" : "Lưu về học"}
+                {saved ? (
+                  <BookmarkOff className="h-4 w-4" />
+                ) : (
+                  <Bookmark className="h-4 w-4" />
+                )}
+                {saved ? "Đã lưu" : "Lưu"}
               </button>
               <button
                 type="button"
                 onClick={onCopy}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-5 text-sm font-bold text-yellow-800 transition-colors hover:bg-yellow-100"
               >
-                <Copy className="h-4 w-4" />
+                <CopyPlus className="h-4 w-4" />
                 Sao chép
               </button>
               <button
@@ -702,21 +769,24 @@ function DeckHeader({
             </>
           ) : (
             <>
-          <ImportVocabularyDialog deckId={deckId} onImported={onCardCreated} />
-          <AddCardDialog
-            deckId={deckId}
-            onCardCreated={onCardCreated}
-            triggerLabel="Thêm từ mới"
-            trigger={
-              <button
-                type="button"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-yellow-400 px-5 text-sm font-bold text-gray-900 shadow-lg shadow-yellow-200/60 transition-colors hover:bg-yellow-300"
-              >
-                <Plus className="h-4 w-4" />
-                Thêm từ mới
-              </button>
-            }
-          />
+              <ImportVocabularyDialog
+                deckId={deckId}
+                onImported={onCardCreated}
+              />
+              <AddCardDialog
+                deckId={deckId}
+                onCardCreated={onCardCreated}
+                triggerLabel="Thêm từ mới"
+                trigger={
+                  <button
+                    type="button"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-yellow-400 px-5 text-sm font-bold text-gray-900 shadow-lg shadow-yellow-200/60 transition-colors hover:bg-yellow-300"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Thêm từ mới
+                  </button>
+                }
+              />
             </>
           )}
         </div>
@@ -730,6 +800,11 @@ function DeckHeader({
           <span className="rounded-full bg-gray-50 px-3 py-1">
             Tác giả: {deckNode?.user_id.slice(0, 8) ?? "StudyBee"}
           </span>
+          {deckNode?.cloned_from_author_label && (
+            <span className="rounded-full bg-yellow-50 px-3 py-1 text-yellow-700">
+              Sao chép từ bộ từ của {deckNode.cloned_from_author_label}
+            </span>
+          )}
           {deckNode?.level && (
             <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">
               {deckNode.level}
@@ -765,10 +840,26 @@ function CompactProgressSummary({
   return (
     <div className="mt-4">
       <div className="flex flex-wrap gap-2">
-        <StatChip label="thẻ" value={progress.total} tone="border-yellow-100 bg-yellow-50 text-yellow-700" />
-        <StatChip label="đã học" value={progress.studied} tone="border-sky-100 bg-sky-50 text-sky-700" />
-        <StatChip label="cần ôn" value={progress.due} tone="border-rose-100 bg-rose-50 text-rose-700" />
-        <StatChip label="đã thuộc" value={progress.mastered} tone="border-emerald-100 bg-emerald-50 text-emerald-700" />
+        <StatChip
+          label="từ vựng"
+          value={progress.total}
+          tone="border-yellow-100 bg-yellow-50 text-yellow-700"
+        />
+        <StatChip
+          label="đã học"
+          value={progress.studied}
+          tone="border-sky-100 bg-sky-50 text-sky-700"
+        />
+        <StatChip
+          label="cần ôn"
+          value={progress.due}
+          tone="border-rose-100 bg-rose-50 text-rose-700"
+        />
+        <StatChip
+          label="đã thuộc"
+          value={progress.mastered}
+          tone="border-emerald-100 bg-emerald-50 text-emerald-700"
+        />
       </div>
 
       <div className="mt-3 rounded-2xl border border-yellow-100 bg-yellow-50/60 px-3 py-2.5">
@@ -797,7 +888,9 @@ function StatChip({
   tone: string;
 }) {
   return (
-    <span className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-bold ${tone}`}>
+    <span
+      className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-bold ${tone}`}
+    >
       <span>{value}</span>
       <span>{label}</span>
     </span>
@@ -850,92 +943,6 @@ function DeckToolbar({
               {item.label}
             </button>
           ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ProgressSummary({
-  progress,
-}: {
-  progress: {
-    total: number;
-    mastered: number;
-    due: number;
-    studied: number;
-    percent: number;
-  };
-}) {
-  return (
-    <div className="mt-5">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryItem
-          icon={BookOpenCheck}
-          label="Tổng số thẻ"
-          value={progress.total}
-          tone="bg-yellow-100 text-yellow-700"
-        />
-        <SummaryItem
-          icon={BookOpen}
-          label="Đã học"
-          value={progress.studied}
-          tone="bg-sky-100 text-sky-700"
-        />
-        <SummaryItem
-          icon={Clock3}
-          label="Cần ôn tập"
-          value={progress.due}
-          tone="bg-rose-100 text-rose-700"
-        />
-        <SummaryItem
-          icon={CheckCircle2}
-          label="Đã thuộc"
-          value={progress.mastered}
-          tone="bg-emerald-100 text-emerald-700"
-        />
-      </div>
-
-      <div className="mt-4 rounded-2xl border border-yellow-100 bg-yellow-50/60 p-3.5">
-        <div className="mb-2 flex items-center justify-between text-xs font-bold text-gray-500">
-          <span>Mức độ hoàn thành</span>
-          <span>{progress.percent}%</span>
-        </div>
-        <div className="h-2 overflow-hidden rounded-full bg-yellow-100">
-          <div
-            className="h-full rounded-full bg-yellow-400 transition-all duration-500"
-            style={{ width: `${progress.percent}%` }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SummaryItem({
-  icon: Icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: typeof BookOpen;
-  label: string;
-  value: number;
-  tone: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-3.5">
-      <div className="flex items-center gap-3">
-        <div
-          className={`flex h-9 w-9 items-center justify-center rounded-xl ${tone}`}
-        >
-          <Icon className="h-5 w-5" />
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-gray-400">{label}</p>
-          <p className="font-heading text-xl font-bold leading-none text-gray-900">
-            {value}
-          </p>
         </div>
       </div>
     </div>
@@ -1019,22 +1026,22 @@ function VocabularyCard({
       </button>
 
       {!readOnly && (
-      <div className="mt-auto flex items-center justify-end border-t border-gray-100 pt-3">
-        <AddCardDialog
-          deckId={card.deck_id}
-          onCardCreated={onCardUpdated}
-          card={card}
-          trigger={
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 rounded-full bg-yellow-300 px-3 py-1.5 text-xs font-bold text-gray-900 shadow-sm shadow-yellow-100 transition-colors hover:bg-yellow-400"
-            >
-              Chỉnh sửa
-              <Edit3 className="h-3.5 w-3.5" />
-            </button>
-          }
-        />
-      </div>
+        <div className="mt-auto flex items-center justify-end border-t border-gray-100 pt-3">
+          <AddCardDialog
+            deckId={card.deck_id}
+            onCardCreated={onCardUpdated}
+            card={card}
+            trigger={
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-full bg-yellow-300 px-3 py-1.5 text-xs font-bold text-gray-900 shadow-sm shadow-yellow-100 transition-colors hover:bg-yellow-400"
+              >
+                Chỉnh sửa
+                <Edit3 className="h-3.5 w-3.5" />
+              </button>
+            }
+          />
+        </div>
       )}
     </article>
   );
@@ -1080,17 +1087,6 @@ function VocabularyDetailModal({
   onMarkMastered: (card: VocabularyCardData) => void | Promise<void>;
 }) {
   const [marking, setMarking] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open]);
 
   if (!vocabulary) return null;
 
@@ -1314,19 +1310,19 @@ function EmptyDeckState({
         <BookOpen className="h-8 w-8" />
       </div>
       <h2 className="font-heading text-2xl font-bold text-gray-900">
-        Bộ thẻ này chưa có từ nào
+        Bộ từ này chưa có từ vựng nào
       </h2>
       <p className="mt-2 max-w-sm text-sm leading-relaxed text-gray-500">
-        Tạo thẻ đầu tiên bằng AI để bắt đầu học từ vựng trong bộ này.
+        Thêm từ vựng đầu tiên bằng AI để bắt đầu học bộ từ này.
       </p>
       {!readOnly && (
-      <div className="mt-6">
-        <AddCardDialog
-          deckId={deckId}
-          onCardCreated={onCardCreated}
-          triggerLabel="Thêm từ đầu tiên"
-        />
-      </div>
+        <div className="mt-6">
+          <AddCardDialog
+            deckId={deckId}
+            onCardCreated={onCardCreated}
+            triggerLabel="Thêm từ đầu tiên"
+          />
+        </div>
       )}
     </section>
   );

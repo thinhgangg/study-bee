@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,6 +11,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  VisibilityRestrictionNotice,
+  VisibilitySelect,
+} from "@/components/vocabulary/VisibilitySelect";
+import {
   renameVocabularyNode,
   type VocabularyNode,
   type VocabularyVisibility,
@@ -21,12 +24,14 @@ export function RenameNodeDialog({
   profileId,
   node,
   open,
+  ancestorVisibility = "public",
   onOpenChange,
   onSaved,
 }: {
   profileId?: string | null;
   node: VocabularyNode | null;
   open: boolean;
+  ancestorVisibility?: VocabularyVisibility;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
 }) {
@@ -74,7 +79,7 @@ export function RenameNodeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden border border-yellow-100 bg-white p-0 shadow-2xl shadow-yellow-100/70 sm:max-w-md">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto border border-yellow-100 bg-white p-0 shadow-2xl shadow-yellow-100/70 sm:max-w-md">
         <div className="bg-[#FFFBEB] px-5 py-5">
           <DialogHeader>
             <DialogTitle className="font-heading text-2xl font-bold text-gray-900">
@@ -89,30 +94,33 @@ export function RenameNodeDialog({
             <Input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
+              className="h-11 rounded-2xl"
             />
           </label>
+          <VisibilityRestrictionNotice
+            itemType={node?.type ?? "deck"}
+            visibility={visibility}
+            ancestorVisibility={ancestorVisibility}
+          />
+
           <label className="grid gap-2 text-sm font-bold text-gray-700">
             Mô tả
             <Textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               rows={3}
+              className="min-h-24 rounded-2xl"
             />
           </label>
+
           <label className="grid gap-2 text-sm font-bold text-gray-700">
-            Visibility
-            <select
+            Quyền hiển thị
+            <VisibilitySelect
               value={visibility}
-              onChange={(event) =>
-                setVisibility(event.target.value as VocabularyVisibility)
-              }
-              className="h-11 rounded-2xl border border-gray-200 bg-gray-50 px-4 text-sm font-medium outline-none focus:border-yellow-300 focus:ring-4 focus:ring-yellow-300/20"
-            >
-              <option value="private">Private</option>
-              <option value="unlisted">Unlisted</option>
-              <option value="public">Public</option>
-            </select>
+              onValueChange={setVisibility}
+            />
           </label>
+
           {error && (
             <p className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">
               {error}
@@ -133,7 +141,6 @@ export function RenameNodeDialog({
             disabled={saving}
             className="h-10 gap-2 rounded-full bg-gray-900 px-5 font-bold text-yellow-300 hover:bg-gray-700"
           >
-            <Save className="h-4 w-4" />
             {saving ? "Đang lưu..." : "Lưu"}
           </Button>
         </div>

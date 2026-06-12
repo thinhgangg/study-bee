@@ -14,11 +14,13 @@ export function StudyBeeLogo({
   return (
     <Link href="/" className={`inline-flex items-center gap-2 ${className}`}>
       <img
-        src="/studybee-logo.svg"
+        src="/studybee-mascot.png"
         alt="StudyBee"
-        className={imageClassName}
+        className={`object-contain ${imageClassName}`}
       />
-      <span className={textClassName}>StudyBee</span>
+      <span className={textClassName}>
+        Study<span className="text-yellow-500">Bee</span>
+      </span>
     </Link>
   );
 }

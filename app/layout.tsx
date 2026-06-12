@@ -21,7 +21,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "StudyBee",
   icons: {
-    icon: "/studybee-logo.svg",
+    icon: "/studybee-mascot.png",
   },
   description: "Học IELTS thông minh hơn mỗi ngày cùng StudyBee",
 };

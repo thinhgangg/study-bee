@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, FolderPlus } from "lucide-react";
+import { Bookmark, BookOpen, FolderPlus, Search } from "lucide-react";
 import type { VocabularyNode } from "@/lib/vocabularyTree";
 import { VocabularyNodeCard } from "@/components/vocabulary/VocabularyNodeCard";
 
@@ -96,17 +96,60 @@ export function VocabularyGridSkeleton() {
   );
 }
 
-export function PublicEmptyState() {
+export function VocabularyEmptyState({
+  variant,
+}: {
+  variant: "mine" | "folder" | "community" | "saved" | "search";
+}) {
+  const content = {
+    mine: {
+      icon: FolderPlus,
+      iconClassName: "bg-yellow-100 text-yellow-700",
+      title: "Bạn chưa có thư mục hoặc bộ từ nào.",
+      description:
+        "Bắt đầu bằng cách tạo thư mục để tổ chức, hoặc tạo bộ từ đầu tiên.",
+    },
+    folder: {
+      icon: FolderPlus,
+      iconClassName: "bg-yellow-100 text-yellow-700",
+      title: "Thư mục này chưa có bộ từ nào.",
+      description: "Tạo thư mục hoặc bộ từ đầu tiên của bạn.",
+    },
+    community: {
+      icon: BookOpen,
+      iconClassName: "bg-sky-100 text-sky-700",
+      title: "Chưa có bộ từ công khai.",
+      description:
+        "Các thư mục và bộ từ được chia sẻ công khai từ cộng đồng sẽ xuất hiện ở đây.",
+    },
+    saved: {
+      icon: Bookmark,
+      iconClassName: "bg-yellow-100 text-yellow-700",
+      title: "Bạn chưa lưu bộ từ nào.",
+      description:
+        "Lưu các bộ từ hoặc thư mục từ cộng đồng để xem lại nhanh ở đây.",
+    },
+    search: {
+      icon: Search,
+      iconClassName: "bg-gray-100 text-gray-600",
+      title: "Không tìm thấy kết quả phù hợp.",
+      description: "Thử thay đổi từ khóa tìm kiếm của bạn.",
+    },
+  }[variant];
+  const Icon = content.icon;
+
   return (
     <div className="rounded-3xl border border-yellow-100 bg-white px-6 py-16 text-center shadow-sm shadow-yellow-100/60">
-      <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-sky-100 text-sky-700">
-        <BookOpen className="h-8 w-8" />
+      <div
+        className={`mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl ${content.iconClassName}`}
+      >
+        <Icon className="h-8 w-8" />
       </div>
       <h2 className="font-heading text-2xl font-bold text-gray-900">
-        Chưa có bộ từ công khai.
+        {content.title}
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-gray-500">
-        Khi có thư mục hoặc deck public, bạn có thể mở xem và sao chép về bộ của mình.
+        {content.description}
       </p>
     </div>
   );

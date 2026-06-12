@@ -1,22 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
-  BookOpen,
-  Copy,
+  BookmarkOff,
+  Bookmark,
+  Library,
   Edit3,
   Eye,
-  Files,
+  Languages,
   Folder,
   FolderOpen,
-  GraduationCap,
-  Heart,
   MoreHorizontal,
-  MoveRight,
+  FolderInput,
   Trash2,
+  CirclePlay,
+  CopyPlus,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { VocabularyNode } from "@/lib/vocabularyTree";
 
 export function VocabularyNodeCard({
@@ -49,28 +55,30 @@ export function VocabularyNodeCard({
   onMenuOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const menuRef = useRef<HTMLDivElement>(null);
   const isFolder = node.type === "folder";
   const isCommunity = variant === "community";
   const isSaved = variant === "saved";
   const openHref = isFolder
     ? (folderHref?.(node) ?? `/vocabulary/folder/${node.id}`)
     : (deckHref?.(node) ?? `/vocabulary/deck/${node.id}`);
-  const nodeStudyHref = studyHref?.(node) ?? `/vocabulary/deck/${node.id}/study`;
+  const nodeStudyHref =
+    studyHref?.(node) ?? `/vocabulary/deck/${node.id}/study`;
   const studiedCount = Number(node.studied_count ?? 0);
   const dueCount = Number(node.due_count ?? 0);
   const saveCount = Number(node.save_count ?? 0);
   const savedByMe = Boolean(node.saved_by_me);
-  const visibilityLabel = {
-    public: "Công khai",
-    private: "Riêng tư",
-    unlisted: "Ẩn",
-  }[node.visibility] ?? node.visibility;
+  const visibilityLabel =
+    {
+      public: "Công khai",
+      private: "Riêng tư",
+      unlisted: "Không công khai",
+    }[node.visibility] ?? node.visibility;
   const progressTotal = isFolder ? node.total_card_count : node.card_count;
   const progress =
-    progressTotal > 0
-      ? Math.round((studiedCount / progressTotal) * 100)
-      : 0;
+    progressTotal > 0 ? Math.round((studiedCount / progressTotal) * 100) : 0;
+  const clonedFromAuthor = node.cloned_from_author_label;
+  const studyLabel =
+    progress <= 0 ? "Học ngay" : progress >= 100 ? "Ôn tập" : "Học tiếp";
 
   function openNode() {
     if (menuOpen) {
@@ -79,30 +87,6 @@ export function VocabularyNodeCard({
     }
     router.push(openHref);
   }
-
-  useEffect(() => {
-    if (!menuOpen) return;
-
-    function handlePointerDown(event: PointerEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        onMenuOpenChange(false);
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onMenuOpenChange(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [menuOpen, onMenuOpenChange]);
 
   return (
     <article
@@ -115,7 +99,9 @@ export function VocabularyNodeCard({
           openNode();
         }
       }}
-      className="group relative flex min-h-[280px] cursor-pointer flex-col rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm shadow-yellow-100/60 transition-all duration-300 hover:-translate-y-1 hover:border-yellow-200 hover:shadow-xl hover:shadow-yellow-100/70 focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300/30"
+      className={`group relative flex min-h-[280px] cursor-pointer flex-col rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm shadow-yellow-100/60 transition-all duration-300 hover:-translate-y-1 hover:border-yellow-200 hover:shadow-xl hover:shadow-yellow-100/70 focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300/30 ${
+        menuOpen ? "z-20" : ""
+      }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div
@@ -128,7 +114,7 @@ export function VocabularyNodeCard({
           {isFolder ? (
             <Folder className="h-8 w-8" />
           ) : (
-            <BookOpen className="h-7 w-7" />
+            <Library className="h-7 w-7" />
           )}
         </div>
 
@@ -145,53 +131,41 @@ export function VocabularyNodeCard({
 
           {editable && (
             <div
-              ref={menuRef}
               className="relative z-30"
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
             >
-              <button
-                type="button"
-                aria-label="Tùy chọn"
-                aria-expanded={menuOpen}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onMenuOpenChange(!menuOpen);
-                }}
-                className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-yellow-50 hover:text-gray-900 aria-expanded:bg-yellow-50 aria-expanded:text-gray-900"
-              >
-                <MoreHorizontal className="h-5 w-5" />
-              </button>
-              {menuOpen && (
-                <div className="absolute right-0 top-11 z-50 w-44 rounded-2xl border border-yellow-100 bg-white p-1 shadow-xl shadow-yellow-100/70">
-                  <MenuButton
-                    icon={Edit3}
-                    label="Chỉnh sửa"
-                    onClick={() => {
-                      onMenuOpenChange(false);
-                      onRename(node);
-                    }}
-                  />
-                  <MenuButton
-                    icon={MoveRight}
-                    label="Di chuyển"
-                    onClick={() => {
-                      onMenuOpenChange(false);
-                      onMove(node);
-                    }}
-                  />
-                  <MenuButton
-                    danger
-                    icon={Trash2}
-                    label="Xóa"
-                    onClick={() => {
-                      onMenuOpenChange(false);
-                      onDelete(node);
-                    }}
-                  />
-                </div>
-              )}
+              <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Tùy chọn"
+                    className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full text-gray-400 outline-none transition-colors hover:bg-yellow-50 hover:text-gray-900 focus:outline-none focus-visible:outline-none focus-visible:ring-0 data-[state=open]:bg-yellow-50 data-[state=open]:text-gray-900"
+                  >
+                    <MoreHorizontal className="h-5 w-5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <DropdownMenuItem onSelect={() => onRename(node)}>
+                    <Edit3 className="text-yellow-600" />
+                    Chỉnh sửa
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onMove(node)}>
+                    <FolderInput className="text-yellow-600" />
+                    Di chuyển
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => onDelete(node)}
+                    className="text-rose-600 focus:bg-rose-50 focus:text-rose-700"
+                  >
+                    <Trash2 />
+                    Xóa
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           )}
         </div>
@@ -209,14 +183,24 @@ export function VocabularyNodeCard({
         </p>
 
         {(isCommunity || isSaved) && (
-          <div className="mt-3 flex min-w-0 items-center justify-between gap-2 text-xs font-bold text-gray-400">
-            <span className="min-w-0 truncate">
-              Tác giả: {node.user_id.slice(0, 8)}
-            </span>
-            {node.level && (
-              <span className="shrink-0 rounded-full bg-gray-50 px-2 py-1 text-gray-500">
-                {node.level}
+          <div className="mt-3 min-h-[2.75rem] text-xs font-bold">
+            <div className="flex min-w-0 items-center justify-between gap-2 text-gray-400">
+              <span className="min-w-0 truncate">
+                Tác giả: {node.user_id.slice(0, 8)}
               </span>
+              {node.level && (
+                <span className="shrink-0 rounded-full bg-gray-50 px-2 py-1 text-gray-500">
+                  {node.level}
+                </span>
+              )}
+            </div>
+            {clonedFromAuthor ? (
+              <p className="mt-1 line-clamp-1 text-yellow-700">
+                Sao chép từ {isFolder ? "thư mục" : "bộ từ"} của{" "}
+                {clonedFromAuthor}
+              </p>
+            ) : (
+              <p className="mt-1 invisible">Không có nguồn sao chép</p>
             )}
           </div>
         )}
@@ -225,7 +209,7 @@ export function VocabularyNodeCard({
           <div className="mt-4 rounded-2xl bg-[#FFFBEB] px-3 py-2">
             <div className="flex items-center justify-between gap-3 text-sm font-bold text-gray-700">
               <span className="flex min-w-0 items-center gap-2">
-                <GraduationCap className="h-4 w-4 shrink-0 text-yellow-600" />
+                <Languages className="h-4 w-4 shrink-0 text-yellow-600" />
                 <span>{progressTotal} từ vựng</span>
               </span>
               <span className="shrink-0 text-gray-900">{progress}%</span>
@@ -244,31 +228,35 @@ export function VocabularyNodeCard({
           </div>
         ) : isFolder ? (
           <div className="mt-4 grid grid-cols-3 gap-2 text-xs font-bold text-gray-600">
-            <Stat icon={FolderOpen} value={node.child_folder_count} label="thư mục" />
-            <Stat icon={Files} value={node.child_deck_count} label="bộ từ" />
-            <Stat icon={GraduationCap} value={node.total_card_count} label="từ" />
+            <Stat
+              icon={Folder}
+              value={node.child_folder_count}
+              label="thư mục"
+            />
+            <Stat icon={Library} value={node.child_deck_count} label="bộ từ" />
+            <Stat
+              icon={Languages}
+              value={node.total_card_count}
+              label="từ vựng"
+            />
           </div>
         ) : (
           <div className="mt-4 space-y-3">
             <div className="rounded-2xl bg-[#FFFBEB] px-3 py-2">
               <div className="flex items-center justify-between gap-3 text-sm font-bold text-gray-700">
                 <span className="flex min-w-0 items-center gap-2">
-                  <GraduationCap className="h-4 w-4 shrink-0 text-yellow-600" />
+                  <Languages className="h-4 w-4 shrink-0 text-yellow-600" />
                   <span>{node.card_count} từ vựng</span>
                 </span>
-                {!isCommunity && (
-                  <span className="shrink-0 text-gray-900">{progress}%</span>
-                )}
+                <span className="shrink-0 text-gray-900">{progress}%</span>
               </div>
-              {!isCommunity && (
-                <div className="mt-2 h-2 overflow-hidden rounded-full bg-yellow-100">
-                  <div
-                    className="h-full rounded-full bg-yellow-400 transition-all duration-500"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-              )}
-              {dueCount > 0 && !isCommunity && (
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-yellow-100">
+                <div
+                  className="h-full rounded-full bg-yellow-400 transition-all duration-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              {dueCount > 0 && (
                 <p className="mt-2 text-xs font-bold text-rose-600">
                   {dueCount} từ cần ôn
                 </p>
@@ -302,21 +290,15 @@ export function VocabularyNodeCard({
               href={nodeStudyHref}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-gray-900 px-4 text-sm font-bold text-yellow-300 transition-colors hover:bg-gray-700"
             >
-              <GraduationCap className="h-4 w-4" />
-              {isCommunity || isSaved ? "Học" : "Học ngay"}
+              <CirclePlay className="h-4 w-4" />
+              {studyLabel}
             </Link>
             <Link
               href={openHref}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-4 text-sm font-bold text-gray-700 transition-colors hover:bg-yellow-50"
             >
-              {isCommunity || isSaved ? (
-                <>
-                  <Eye className="h-4 w-4" />
-                  Xem
-                </>
-              ) : (
-                "Xem bộ thẻ"
-              )}
+              <Eye className="h-4 w-4" />
+              Xem bộ từ
             </Link>
           </>
         )}
@@ -329,10 +311,14 @@ export function VocabularyNodeCard({
             event.stopPropagation();
             onSave(node);
           }}
-          className="mt-2 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-gray-900 px-4 text-sm font-bold text-yellow-300 transition-colors hover:bg-gray-700"
+          className="mt-2 inline-flex h-10 items-center justify-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-4 text-sm font-bold text-yellow-800 transition-colors hover:border-yellow-300 hover:bg-yellow-100"
         >
-          <Heart className={`h-4 w-4 ${savedByMe ? "fill-current" : ""}`} />
-          {savedByMe ? "Bỏ lưu" : "Lưu về học"}
+          {savedByMe ? (
+            <BookmarkOff className="h-4 w-4" />
+          ) : (
+            <Bookmark className="h-4 w-4" />
+          )}
+          {savedByMe ? "Bỏ lưu" : "Lưu"}
         </button>
       )}
 
@@ -345,8 +331,8 @@ export function VocabularyNodeCard({
           }}
           className="mt-2 inline-flex h-10 items-center justify-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-4 text-sm font-bold text-yellow-800 transition-colors hover:bg-yellow-100"
         >
-          <Copy className="h-4 w-4" />
-          Sao chép để chỉnh sửa
+          <CopyPlus className="h-4 w-4" />
+          Sao chép
         </button>
       )}
     </article>
@@ -378,32 +364,5 @@ function Chip({ children }: { children: React.ReactNode }) {
     <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700">
       {children}
     </span>
-  );
-}
-
-function MenuButton({
-  icon: Icon,
-  label,
-  danger,
-  onClick,
-}: {
-  icon: typeof Edit3;
-  label: string;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex h-9 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-bold transition-colors ${
-        danger
-          ? "text-rose-600 hover:bg-rose-50"
-          : "text-gray-700 hover:bg-yellow-50"
-      }`}
-    >
-      <Icon className="h-4 w-4" />
-      {label}
-    </button>
   );
 }

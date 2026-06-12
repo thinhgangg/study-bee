@@ -77,12 +77,13 @@ export default function RegisterPage() {
 
       <div className="relative w-full max-w-[400px]">
         <div className="flex flex-col items-center rounded-3xl border border-yellow-100 bg-white p-7 shadow-2xl shadow-yellow-100/70 md:p-9">
-          <Link href="/">
+          <Link href="/" className="studybee-flying-logo [--bee-delay:-1.4s]">
             <img
-              src="/studybee-logo.svg"
+              src="/studybee-mascot.png"
               alt="StudyBee"
-              className="h-20 w-20 object-contain"
+              className="studybee-flying-bee h-20 w-20 object-contain"
             />
+            <span className="studybee-flying-shadow" aria-hidden="true" />
           </Link>
 
           <div className="mb-7 mt-4 text-center">

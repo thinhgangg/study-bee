@@ -177,7 +177,7 @@ export function AddCardDialog({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message ?? "Không thể tạo thẻ bằng AI.");
+        throw new Error(data.message ?? "Không thể tạo từ vựng bằng AI.");
       }
 
       const generatedCard = data as GeneratedCard;
@@ -266,7 +266,7 @@ export function AddCardDialog({
       resetForm();
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "Có lỗi xảy ra khi lưu thẻ.",
+        err instanceof Error ? err.message : "Có lỗi xảy ra khi lưu từ vựng.",
       );
     } finally {
       setSaving(false);
@@ -305,7 +305,7 @@ export function AddCardDialog({
       resetForm();
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "Có lỗi xảy ra khi xóa thẻ.",
+        err instanceof Error ? err.message : "Có lỗi xảy ra khi xóa từ vựng.",
       );
     } finally {
       setDeleting(false);
@@ -562,7 +562,7 @@ export function AddCardDialog({
                         Xóa từ vựng
                       </p>
                       <p className="mt-1 text-xs leading-relaxed text-rose-500">
-                        Xóa từ này và lịch sử ôn tập liên quan khỏi bộ thẻ.
+                        Xóa từ này và lịch sử ôn tập liên quan khỏi bộ từ.
                       </p>
                     </div>
                   </div>
@@ -602,7 +602,7 @@ export function AddCardDialog({
               onClick={handleSave}
               disabled={!form.word.trim() || generating || saving || deleting}
             >
-              {saving ? "Đang lưu..." : isEditing ? "Lưu thay đổi" : "Lưu thẻ"}
+              {saving ? "Đang lưu..." : isEditing ? "Lưu thay đổi" : "Lưu từ"}
             </Button>
           </div>
         </div>

@@ -370,7 +370,7 @@ export async function POST(request: Request) {
 
     if (!word) {
       return NextResponse.json(
-        { message: "Vui lòng nhập từ tiếng Anh cần tạo thẻ." },
+        { message: "Vui lòng nhập từ tiếng Anh cần tạo từ vựng." },
         { status: 400 },
       );
     }
@@ -444,7 +444,7 @@ Yêu cầu image_query cho Pixabay:
         {
           message: lastError?.message
             ? `Gemini lỗi: ${lastError.message}`
-            : "Không thể tạo thẻ bằng Gemini. Vui lòng thử lại.",
+            : "Không thể tạo từ vựng bằng Gemini. Vui lòng thử lại.",
         },
         { status: 502 },
       );
@@ -498,7 +498,7 @@ Yêu cầu image_query cho Pixabay:
     console.error("Generate card error:", error);
 
     return NextResponse.json(
-      { message: "Có lỗi xảy ra khi tạo thẻ. Vui lòng thử lại." },
+      { message: "Có lỗi xảy ra khi tạo từ vựng. Vui lòng thử lại." },
       { status: 500 },
     );
   }

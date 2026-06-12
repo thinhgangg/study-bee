@@ -1,18 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Clock3,
   HelpCircle,
   ImageIcon,
   RotateCcw,
   Shuffle,
+  Target,
+  Trophy,
+  Volume2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { HoneycombPattern } from "@/components/ui/honeycomb-pattern";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +57,8 @@ interface StudyCard {
 interface Profile {
   id: string;
 }
+
+type ReviewResults = Record<string, number>;
 
 const reviewOptions = [
   {
@@ -97,34 +105,10 @@ function getEnglishLabel(value: string) {
   return trimmed.split(separator)[0]?.trim() || trimmed;
 }
 
-function HoneycombPattern() {
-  return (
-    <svg
-      className="pointer-events-none absolute inset-0 h-full w-full opacity-70"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <defs>
-        <pattern
-          id="study-honeycomb"
-          x="0"
-          y="0"
-          width="56"
-          height="64"
-          patternUnits="userSpaceOnUse"
-        >
-          <polygon
-            points="28,2 52,16 52,48 28,62 4,48 4,16"
-            fill="none"
-            stroke="#FACC15"
-            strokeOpacity="0.14"
-            strokeWidth="0.8"
-          />
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" fill="url(#study-honeycomb)" />
-    </svg>
-  );
+function formatDuration(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 export default function StudyPage({
@@ -142,15 +126,19 @@ export default function StudyPage({
       : `/vocabulary/${deckId}`;
   const [deck, setDeck] = useState<Deck | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [allCards, setAllCards] = useState<StudyCard[]>([]);
   const [cards, setCards] = useState<StudyCard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
+  const [reviewResults, setReviewResults] = useState<ReviewResults>({});
+  const [sessionDuration, setSessionDuration] = useState(0);
   const [loading, setLoading] = useState(true);
   const [savingReview, setSavingReview] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState("");
+  const sessionStartedAt = useRef(0);
 
   const currentCard = cards[currentIndex];
   const reviewedPercent =
@@ -244,11 +232,16 @@ export default function StudyPage({
               description: node.description,
             },
       );
-      setCards((cardData ?? []) as StudyCard[]);
+      const loadedCards = (cardData ?? []) as StudyCard[];
+      setAllCards(loadedCards);
+      setCards(loadedCards);
       setCurrentIndex(0);
       setFlipped(false);
       setCompleted(false);
       setReviewedIds(new Set());
+      setReviewResults({});
+      setSessionDuration(0);
+      sessionStartedAt.current = Date.now();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra.");
     } finally {
@@ -277,6 +270,9 @@ export default function StudyPage({
     if (cards.length === 0) return;
 
     if (currentIndex >= cards.length - 1) {
+      setSessionDuration(
+        Math.max(1, Math.round((Date.now() - sessionStartedAt.current) / 1000)),
+      );
       setCompleted(true);
       setFlipped(false);
       return;
@@ -309,6 +305,8 @@ export default function StudyPage({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.target instanceof HTMLInputElement) return;
       if (event.target instanceof HTMLTextAreaElement) return;
+      if (event.target instanceof HTMLButtonElement) return;
+      if (event.target instanceof HTMLAnchorElement) return;
 
       if (event.key === "ArrowLeft") {
         event.preventDefault();
@@ -378,10 +376,14 @@ export default function StudyPage({
       if (upsertError) throw upsertError;
 
       setReviewedIds((current) => new Set(current).add(currentCard.id));
+      setReviewResults((current) => ({
+        ...current,
+        [currentCard.id]: quality,
+      }));
       goNext();
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "Không thể lưu đánh giá thẻ.",
+        err instanceof Error ? err.message : "Không thể lưu đánh giá từ vựng.",
       );
     } finally {
       setSavingReview(false);
@@ -389,10 +391,31 @@ export default function StudyPage({
   }
 
   function restartSession() {
+    setCards(allCards);
     setCurrentIndex(0);
     setFlipped(false);
     setCompleted(false);
     setReviewedIds(new Set());
+    setReviewResults({});
+    setSessionDuration(0);
+    sessionStartedAt.current = Date.now();
+  }
+
+  function reviewDifficultCards() {
+    const difficultCards = allCards.filter(
+      (card) => (reviewResults[card.id] ?? 5) <= 3,
+    );
+
+    if (difficultCards.length === 0) return;
+
+    setCards(difficultCards);
+    setCurrentIndex(0);
+    setFlipped(false);
+    setCompleted(false);
+    setReviewedIds(new Set());
+    setReviewResults({});
+    setSessionDuration(0);
+    sessionStartedAt.current = Date.now();
   }
 
   if (loading) {
@@ -403,8 +426,8 @@ export default function StudyPage({
     return (
       <StudyShell>
         <CenteredState
-          title="Không tìm thấy bộ thẻ"
-          description="Bộ thẻ này không tồn tại hoặc không thuộc tài khoản hiện tại."
+          title="Không tìm thấy bộ từ"
+          description="Bộ từ này không tồn tại hoặc không thuộc tài khoản hiện tại."
           action={<BackToDecksButton />}
         />
       </StudyShell>
@@ -427,14 +450,14 @@ export default function StudyPage({
     return (
       <StudyShell>
         <CenteredState
-          title="Bộ thẻ này chưa có từ nào"
-          description="Hãy quay lại bộ thẻ để thêm từ mới trước khi bắt đầu học."
+          title="Bộ từ này chưa có từ vựng nào"
+          description="Hãy quay lại bộ từ để thêm từ mới trước khi bắt đầu học."
           action={
             <Button
               asChild
               className="rounded-full bg-gray-900 font-bold text-yellow-300 hover:bg-gray-700"
             >
-              <Link href={backHref}>Quay lại bộ thẻ</Link>
+              <Link href={backHref}>Quay lại bộ từ</Link>
             </Button>
           }
         />
@@ -444,41 +467,23 @@ export default function StudyPage({
 
   if (completed) {
     return (
-      <StudyShell>
-        <div className="relative mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center px-5 py-12 text-center">
-          <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-[2rem] bg-yellow-100 text-yellow-700 shadow-sm">
-            <CheckCircle2 className="h-11 w-11" />
-          </div>
-          <h1 className="font-heading text-4xl font-bold text-gray-900">
-            Hoàn thành phiên học!
-          </h1>
-          <p className="mt-3 text-base leading-relaxed text-slate-600">
-            Bạn đã ôn {reviewedIds.size} / {cards.length} thẻ.
-          </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Button
-              onClick={restartSession}
-              className="h-11 gap-2 rounded-full bg-gray-900 px-5 font-bold text-yellow-300 hover:bg-gray-700"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Học lại
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="h-11 rounded-full bg-white px-5 font-bold"
-            >
-              <Link href={backHref}>Quay lại bộ thẻ</Link>
-            </Button>
-          </div>
-        </div>
+      <StudyShell scrollable>
+        <StudySummary
+          deck={deck}
+          cards={cards}
+          reviewResults={reviewResults}
+          sessionDuration={sessionDuration}
+          backHref={backHref}
+          onRestart={restartSession}
+          onReviewDifficult={reviewDifficultCards}
+        />
       </StudyShell>
     );
   }
 
   return (
     <StudyShell>
-      <div className="relative mx-auto flex h-screen min-h-0 max-w-6xl flex-col px-4 py-3 sm:px-6 sm:py-4 lg:px-8">
+      <div className="relative mx-auto flex min-h-[100dvh] max-w-6xl flex-col px-4 py-3 sm:px-6 sm:py-4 lg:h-[100dvh] lg:min-h-0 lg:px-8">
         <header className="shrink-0 rounded-3xl border border-yellow-100 bg-white/95 px-4 py-3 shadow-sm shadow-yellow-100/50 backdrop-blur sm:px-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <Button
@@ -488,7 +493,7 @@ export default function StudyPage({
             >
               <Link href={backHref}>
                 <ArrowLeft className="h-4 w-4" />
-                Quay lại bộ thẻ
+                Quay lại bộ từ
               </Link>
             </Button>
 
@@ -520,15 +525,17 @@ export default function StudyPage({
           </div>
         )}
 
-        <section className="flex min-h-0 flex-1 flex-col items-center justify-center py-3 sm:py-4">
-          <button
-            type="button"
+        <section className="flex flex-1 flex-col items-center gap-0 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:py-4 lg:min-h-0 lg:justify-center">
+          <div
+            role="button"
+            tabIndex={0}
             onClick={flipCard}
-            className="group w-full max-w-[680px] rounded-[2rem] text-left outline-none focus-visible:ring-4 focus-visible:ring-yellow-200"
+            className="group w-full max-w-[640px] rounded-[2rem] text-left outline-none focus-visible:ring-4 focus-visible:ring-yellow-200"
+            aria-label={flipped ? "Xem mặt trước flashcard" : "Lật flashcard"}
           >
             <div className="[perspective:1400px]">
               <div
-                className={`relative h-[clamp(360px,58vh,560px)] transition-transform duration-500 ease-out [transform-style:preserve-3d] sm:h-[clamp(390px,60vh,600px)] ${
+                className={`relative h-[clamp(340px,52dvh,480px)] transition-transform duration-500 ease-out [transform-style:preserve-3d] sm:h-[clamp(380px,52dvh,520px)] lg:h-[clamp(380px,54vh,520px)] ${
                   flipped ? "[transform:rotateY(180deg)]" : ""
                 }`}
               >
@@ -540,14 +547,14 @@ export default function StudyPage({
                 </div>
               </div>
             </div>
-          </button>
+          </div>
 
           <p className="mt-3 text-center text-sm font-medium text-slate-500">
             Click thẻ hoặc nhấn Space / Enter để lật
           </p>
 
           <div
-            className={`mt-4 grid w-full max-w-[680px] grid-cols-2 gap-3 transition-opacity sm:grid-cols-4 ${
+            className={`mt-4 grid w-full max-w-[640px] grid-cols-2 gap-3 transition-opacity sm:grid-cols-4 ${
               flipped ? "opacity-100" : "pointer-events-none opacity-0"
             }`}
             aria-hidden={!flipped}
@@ -577,7 +584,7 @@ export default function StudyPage({
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <span className="rounded-full border border-gray-100 bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">
-              Đã ôn {reviewedIds.size} thẻ · {reviewedPercent}%
+              Đã ôn {reviewedIds.size} từ · {reviewedPercent}%
             </span>
             <Button
               variant="outline"
@@ -605,16 +612,334 @@ export default function StudyPage({
   );
 }
 
+function StudySummary({
+  deck,
+  cards,
+  reviewResults,
+  sessionDuration,
+  backHref,
+  onRestart,
+  onReviewDifficult,
+}: {
+  deck: Deck;
+  cards: StudyCard[];
+  reviewResults: ReviewResults;
+  sessionDuration: number;
+  backHref: string;
+  onRestart: () => void;
+  onReviewDifficult: () => void;
+}) {
+  const reviewedCount = Object.keys(reviewResults).length;
+  const rememberedCount = Object.values(reviewResults).filter(
+    (q) => q >= 4,
+  ).length;
+  const accuracy =
+    reviewedCount > 0 ? Math.round((rememberedCount / reviewedCount) * 100) : 0;
+
+  const difficultCards = cards.filter(
+    (card) => (reviewResults[card.id] ?? 5) <= 3,
+  );
+
+  // Phân bổ chất lượng đánh giá cho thanh progress đa sắc
+  const distribution = reviewOptions.map((opt) => ({
+    ...opt,
+    count: Object.values(reviewResults).filter((q) => q === opt.quality).length,
+    percentage:
+      reviewedCount > 0
+        ? (Object.values(reviewResults).filter((q) => q === opt.quality)
+            .length /
+            reviewedCount) *
+          100
+        : 0,
+  }));
+
+  function speakWord(word: string) {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(word);
+    utterance.lang = "en-US";
+    window.speechSynthesis.speak(utterance);
+  }
+
+  return (
+    <div className="relative mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:py-12">
+      {/* 1. CELEBRATION HERO */}
+      <section className="mb-8 text-center sm:mb-10">
+        <div className="relative inline-block">
+          <Image
+            src="/studybee-mascot.png"
+            alt="StudyBee"
+            width={160}
+            height={160}
+            className="mx-auto h-24 w-24 object-contain sm:h-28 sm:w-28"
+            priority
+          />
+          <div className="absolute -right-1 top-0 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-white">
+            <Trophy className="h-4 w-4" />
+          </div>
+        </div>
+
+        <h1 className="mt-4 font-heading text-3xl font-bold text-gray-900 sm:text-4xl">
+          {accuracy >= 80
+            ? "Xuất Sắc!"
+            : accuracy >= 50
+              ? "Làm Tốt Lắm!"
+              : "Cố Gắng Lên!"}
+        </h1>
+        <p className="mt-2 text-base font-medium text-slate-600 sm:text-lg">
+          Bạn vừa hoàn thành bộ thẻ{" "}
+          <span className="font-bold text-amber-600">
+            &ldquo;{deck.name}&rdquo;
+          </span>
+        </p>
+      </section>
+
+      {/* 2. CORE STATS BAR */}
+      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {[
+          {
+            label: "Đã ôn tập",
+            value: `${reviewedCount} từ`,
+            icon: CheckCircle2,
+            color: "text-blue-600",
+            bg: "bg-blue-50",
+          },
+          {
+            label: "Độ chính xác",
+            value: `${accuracy}%`,
+            icon: Target,
+            color: "text-emerald-600",
+            bg: "bg-emerald-50",
+          },
+          {
+            label: "Thời gian",
+            value: formatDuration(sessionDuration),
+            icon: Clock3,
+            color: "text-amber-600",
+            bg: "bg-amber-50",
+          },
+          {
+            label: "Tốc độ",
+            value: `${Math.round(sessionDuration / (reviewedCount || 1))}s/từ`,
+            icon: Volume2,
+            color: "text-purple-600",
+            bg: "bg-purple-50",
+          },
+        ].map((stat, i) => (
+          <div
+            key={i}
+            className="flex flex-col items-center rounded-2xl border border-yellow-100 bg-white p-4"
+          >
+            <div
+              className={`mb-2 flex h-10 w-10 items-center justify-center rounded-2xl ${stat.bg} ${stat.color}`}
+            >
+              <stat.icon className="h-5 w-5" />
+            </div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              {stat.label}
+            </span>
+            <span className="mt-1 font-heading text-xl font-bold text-gray-900">
+              {stat.value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* 3. PERFORMANCE BREAKDOWN */}
+      <section className="mb-10 rounded-3xl border border-yellow-100 bg-white p-5 sm:p-8">
+        <h3 className="mb-6 flex items-center gap-2 font-heading text-xl font-bold">
+          <div className="h-2 w-2 rounded-full bg-yellow-400" />
+          Phân tích kết quả
+        </h3>
+
+        {/* Multi-segment Progress Bar */}
+        <div className="mb-8 h-4 w-full overflow-hidden rounded-full bg-slate-100 flex">
+          {distribution.map((seg, i) => (
+            <div
+              key={i}
+              style={{ width: `${seg.percentage}%` }}
+               className={`h-full ${
+                seg.quality === 1
+                  ? "bg-rose-400"
+                  : seg.quality === 3
+                    ? "bg-amber-400"
+                    : seg.quality === 4
+                      ? "bg-emerald-400"
+                      : "bg-sky-400"
+              }`}
+            />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-4 gap-1 sm:gap-3">
+          {distribution.map((item) => (
+            <div
+              key={item.quality}
+              className="flex min-w-0 items-center justify-center gap-1 rounded-lg border border-gray-100 bg-gray-50/50 px-1 py-2 text-center sm:gap-2 sm:rounded-xl sm:px-3"
+            >
+              <div
+                className={`hidden h-2.5 w-2.5 shrink-0 rounded-full sm:block ${
+                  item.quality === 1
+                    ? "bg-rose-400"
+                    : item.quality === 3
+                      ? "bg-amber-400"
+                      : item.quality === 4
+                        ? "bg-emerald-400"
+                        : "bg-sky-400"
+                }`}
+              />
+              <span className="whitespace-nowrap text-[9px] font-bold text-slate-600 sm:text-xs">
+                {item.label}
+              </span>
+              <span className="whitespace-nowrap font-heading text-[9px] font-bold text-gray-900 sm:text-sm">
+                {item.count} từ
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 4. DIFFICULT WORDS - MINI CARDS */}
+      <section className="mb-12">
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="font-heading text-2xl font-bold text-gray-900">
+            Từ vựng cần lưu ý
+          </h3>
+          <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-600">
+            {difficultCards.length} từ khó
+          </span>
+        </div>
+
+        {difficultCards.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {difficultCards.map((card) => (
+              <div
+                key={card.id}
+                className="group flex items-center justify-between rounded-2xl border border-gray-100 bg-white p-4 transition-colors hover:border-yellow-200 hover:bg-yellow-50/40"
+              >
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <button
+                    onClick={() => speakWord(card.word)}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-yellow-50 text-yellow-600 transition-colors group-hover:bg-yellow-400 group-hover:text-white"
+                  >
+                    <Volume2 className="h-4 w-4" />
+                  </button>
+                  <div className="min-w-0">
+                    <p className="truncate font-heading font-bold text-gray-900">
+                      {card.word}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">
+                      {card.vietnamese_meaning}
+                    </p>
+                  </div>
+                </div>
+                <div
+                  className={`h-2 w-2 rounded-full ${reviewResults[card.id] === 1 ? "bg-rose-400" : "bg-amber-400"}`}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center rounded-[2rem] border-2 border-dashed border-emerald-100 bg-emerald-50/30 py-10 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              <CheckCircle2 className="h-6 w-6" />
+            </div>
+            <p className="font-bold text-emerald-800">
+              Tuyệt vời! Bạn đã nắm vững tất cả các từ.
+            </p>
+            <p className="text-sm text-emerald-600/80">
+              Không có từ nào bị đánh giá là khó trong phiên này.
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* 5. ACTIONS */}
+      <footer className="grid grid-cols-2 gap-2 border-t border-yellow-100 pt-5 sm:grid-cols-3 sm:gap-3">
+        <Button
+          onClick={onReviewDifficult}
+          disabled={difficultCards.length === 0}
+          className="col-span-2 h-11 min-w-0 rounded-xl border border-yellow-400 bg-yellow-400 px-4 text-sm font-bold text-gray-950 hover:border-yellow-500 hover:bg-yellow-500 disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:opacity-100 sm:col-span-1"
+        >
+          <Target className="mr-2 h-4 w-4 shrink-0" />
+          Ôn {difficultCards.length} từ khó
+        </Button>
+
+        <Button
+          onClick={onRestart}
+          variant="outline"
+          className="h-11 min-w-0 rounded-xl border-yellow-300 bg-white px-3 text-sm font-bold text-amber-700 hover:border-yellow-400 hover:bg-yellow-50 hover:text-amber-800 sm:px-4"
+        >
+          <RotateCcw className="mr-2 h-4 w-4 shrink-0 text-amber-600" />
+          Học lại
+        </Button>
+
+        <Button
+          asChild
+          variant="outline"
+          className="h-11 min-w-0 rounded-xl border-gray-200 bg-white px-3 text-sm font-bold text-slate-600 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900 sm:px-4"
+        >
+          <Link href={backHref}>
+            <ArrowLeft className="mr-2 h-4 w-4 shrink-0" />
+            Về bộ từ
+          </Link>
+        </Button>
+      </footer>
+    </div>
+  );
+}
+
 function CardFront({ card }: { card: StudyCard }) {
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined") {
+        window.speechSynthesis?.cancel();
+      }
+    };
+  }, [card.word]);
+
+  function speakWord(event: React.MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(card.word);
+    utterance.lang = "en-US";
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col items-center justify-center text-center">
       <h2 className="line-clamp-2 max-w-full break-words font-heading text-4xl font-bold text-gray-900 sm:text-6xl">
         {card.word}
       </h2>
       {card.phonetic && (
-        <p className="mt-4 break-words font-mono text-base text-slate-500 sm:text-lg">
-          {card.phonetic}
-        </p>
+        <div className="mt-4 flex max-w-full items-center justify-center gap-2">
+          <p className="break-words font-mono text-base text-slate-500 sm:text-lg">
+            {card.phonetic}
+          </p>
+          <button
+            type="button"
+            onClick={speakWord}
+            onKeyDown={(event) => event.stopPropagation()}
+            aria-label={`Phát âm ${card.word}`}
+            title="Phát âm"
+            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-yellow-200 ${
+              isSpeaking
+                ? "border-yellow-300 bg-yellow-100 text-yellow-700"
+                : "border-yellow-100 bg-white text-yellow-600 hover:bg-yellow-50"
+            }`}
+          >
+            <Volume2 className="h-4 w-4" />
+          </button>
+        </div>
       )}
       {card.part_of_speech && (
         <span className="mt-5 rounded-full bg-yellow-100 px-4 py-1.5 text-xs font-bold text-yellow-700">
@@ -632,17 +957,25 @@ function CardBack({
   card: StudyCard;
   hintItems: string[];
 }) {
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const shouldShowImage =
+    Boolean(card.image_url) && failedImageUrl !== card.image_url;
+
   return (
     <div className="flex h-full min-h-0 flex-col items-center overflow-y-auto overscroll-contain px-1 py-1 text-center [scrollbar-width:thin] [scrollbar-color:#FACC15_transparent]">
-      {card.image_url ? (
-        <img
-          src={card.image_url}
+      {shouldShowImage ? (
+        <Image
+          src={card.image_url!}
           alt={card.word}
-          className="mb-4 h-24 w-40 shrink-0 rounded-3xl object-cover shadow-sm sm:h-28 sm:w-48"
+          width={240}
+          height={144}
+          unoptimized
+          onError={() => setFailedImageUrl(card.image_url)}
+          className="mb-5 h-28 w-44 shrink-0 rounded-3xl object-cover shadow-sm sm:h-36 sm:w-60"
         />
       ) : (
-        <div className="mb-4 flex h-20 w-32 shrink-0 items-center justify-center rounded-3xl bg-yellow-50 text-yellow-700 sm:h-24 sm:w-40">
-          <ImageIcon className="h-8 w-8" />
+        <div className="mb-5 flex h-24 w-36 shrink-0 items-center justify-center rounded-2xl bg-yellow-50 text-yellow-700 sm:h-32 sm:w-52 sm:rounded-3xl">
+          <ImageIcon className="h-9 w-9 sm:h-10 sm:w-10" />
         </div>
       )}
 
@@ -651,7 +984,7 @@ function CardBack({
       </h2>
 
       {card.english_example ? (
-        <div className="mt-5 w-full max-w-xl shrink-0 rounded-3xl bg-slate-50 px-4 py-3 text-left">
+        <div className="mt-5 w-full max-w-xl shrink-0 rounded-3xl bg-slate-50 px-4 py-3 text-center">
           <p className="break-words text-sm font-medium italic leading-relaxed text-slate-800 sm:text-base">
             &ldquo;{card.english_example}&rdquo;
           </p>
@@ -701,12 +1034,12 @@ function GuideDialog() {
         </DialogHeader>
         <div className="space-y-3 text-sm leading-6 text-slate-600">
           <p>
-            1. Nhìn từ tiếng Anh ở mặt trước, tự đoán nghĩa tiếng Việt trước
-            khi lật thẻ.
+            1. Nhìn từ tiếng Anh ở mặt trước, tự đoán nghĩa tiếng Việt trước khi
+            lật thẻ.
           </p>
           <p>
-            2. Click thẻ hoặc nhấn Space/Enter để xem đáp án, ví dụ và các gợi
-            ý liên quan.
+            2. Click thẻ hoặc nhấn Space/Enter để xem đáp án, ví dụ và các gợi ý
+            liên quan.
           </p>
           <p>
             3. Chọn mức độ nhớ của bạn. StudyBee sẽ lưu kết quả và lên lịch ôn
@@ -721,9 +1054,21 @@ function GuideDialog() {
     </Dialog>
   );
 }
-function StudyShell({ children }: { children: React.ReactNode }) {
+function StudyShell({
+  children,
+  scrollable = false,
+}: {
+  children: React.ReactNode;
+  scrollable?: boolean;
+}) {
   return (
-    <main className="relative h-screen overflow-hidden bg-[#FFFBEB] font-body text-gray-900">
+    <main
+      className={`relative min-h-[100dvh] overflow-x-hidden bg-[#FFFBEB] font-body text-gray-900 ${
+        scrollable
+          ? "overflow-y-auto"
+          : "overflow-y-auto lg:h-[100dvh] lg:overflow-hidden"
+      }`}
+    >
       <HoneycombPattern />
       {children}
     </main>
@@ -740,7 +1085,7 @@ function CenteredState({
   action: React.ReactNode;
 }) {
   return (
-    <div className="relative mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center px-5 text-center">
+    <div className="relative mx-auto flex min-h-[100dvh] max-w-xl flex-col items-center justify-center px-5 text-center">
       <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-yellow-100 text-yellow-700 shadow-sm">
         <ImageIcon className="h-8 w-8" />
       </div>
@@ -759,7 +1104,7 @@ function BackToDecksButton() {
       asChild
       className="rounded-full bg-gray-900 font-bold text-yellow-300 hover:bg-gray-700"
     >
-      <Link href="/vocabulary">Quay lại bộ thẻ</Link>
+      <Link href="/vocabulary">Quay lại bộ từ</Link>
     </Button>
   );
 }
@@ -767,7 +1112,7 @@ function BackToDecksButton() {
 function StudySkeleton() {
   return (
     <StudyShell>
-      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-5 sm:px-6 lg:px-8">
+      <div className="relative mx-auto flex min-h-[100dvh] max-w-6xl flex-col px-4 py-5 sm:px-6 lg:px-8">
         <div className="rounded-3xl border border-yellow-100 bg-white px-4 py-4 shadow-sm">
           <div className="flex items-center justify-between">
             <Skeleton className="h-10 w-36 rounded-full bg-yellow-100/70" />
@@ -777,7 +1122,7 @@ function StudySkeleton() {
           <Skeleton className="mt-4 h-2 w-full rounded-full bg-yellow-100/70" />
         </div>
         <div className="flex flex-1 flex-col items-center justify-center py-10">
-          <Skeleton className="h-[430px] w-full max-w-[680px] rounded-[2rem] bg-white" />
+          <Skeleton className="h-[430px] w-full max-w-[640px] rounded-[2rem] bg-white" />
           <Skeleton className="mt-5 h-5 w-56 bg-gray-100" />
           <Skeleton className="mt-8 h-10 w-96 max-w-full bg-gray-100" />
         </div>

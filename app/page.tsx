@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { StudyBeeNavbar } from "@/components/layout/StudyBeeNavbar";
 import { StudyBeeLogo } from "@/components/StudyBeeLogo";
+import { HoneycombPattern } from "@/components/ui/honeycomb-pattern";
 import { supabase } from "@/lib/supabase";
 
 // ─── Data ────────────────────────────────────────────────────
@@ -146,37 +147,6 @@ const plans = [
   },
 ];
 
-// ─── Honeycomb SVG pattern ────────────────────────────────────
-// Inline SVG as data URI for bg pattern — subtle, warm
-const HoneycombBg = () => (
-  <svg
-    className="absolute inset-0 h-full w-full"
-    xmlns="http://www.w3.org/2000/svg"
-    aria-hidden="true"
-  >
-    <defs>
-      <pattern
-        id="honey"
-        x="0"
-        y="0"
-        width="56"
-        height="64"
-        patternUnits="userSpaceOnUse"
-      >
-        {/* Single hexagon cell, outline only, very subtle */}
-        <polygon
-          points="28,2 52,16 52,48 28,62 4,48 4,16"
-          fill="none"
-          stroke="#FACC15"
-          strokeWidth="0.8"
-          strokeOpacity="0.25"
-        />
-      </pattern>
-    </defs>
-    <rect width="100%" height="100%" fill="url(#honey)" />
-  </svg>
-);
-
 // ─── Page ────────────────────────────────────────────────────
 
 export default function Home() {
@@ -230,7 +200,7 @@ export default function Home() {
 
       {/* ── Hero — 2 column ────────────────────────────────── */}
       <section className="relative overflow-hidden bg-[#FFFBEB] pt-16">
-        <HoneycombBg />
+        <HoneycombPattern />
 
         {/* Dashed bee flight path — decorative SVG overlay */}
         <svg
@@ -250,7 +220,7 @@ export default function Home() {
           <circle cx="742" cy="160" r="4" fill="#FACC15" fillOpacity="0.7" />
         </svg>
 
-        <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-5 py-10 lg:grid-cols-2 lg:gap-16 lg:px-8 lg:py-20">
+        <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-5 py-10 lg:grid-cols-2 lg:gap-16 lg:px-8 lg:py-10">
           {/* Left — copy */}
           <div>
             <h1 className="font-heading text-5xl font-bold leading-tight text-gray-900 sm:text-6xl">
@@ -348,7 +318,7 @@ export default function Home() {
 
       {/* ── How it works ───────────────────────────────────── */}
       <section className="relative overflow-hidden bg-[#FFFBEB] py-20">
-        <HoneycombBg />
+        <HoneycombPattern />
         <div className="relative mx-auto max-w-7xl px-5 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="font-heading text-3xl font-bold text-gray-900 sm:text-4xl">
@@ -434,7 +404,7 @@ export default function Home() {
         id="pricing"
         className="relative overflow-hidden bg-[#FFFBEB] py-20"
       >
-        <HoneycombBg />
+        <HoneycombPattern />
         <div className="mx-auto max-w-7xl px-5 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="font-heading text-3xl font-bold text-gray-900 sm:text-4xl">

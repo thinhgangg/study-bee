@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FolderPlus, Plus } from "lucide-react";
+import { FolderPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,6 +13,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  VisibilityRestrictionNotice,
+  VisibilitySelect,
+} from "@/components/vocabulary/VisibilitySelect";
+import {
   createVocabularyNode,
   type VocabularyVisibility,
 } from "@/lib/vocabularyTree";
@@ -20,10 +24,12 @@ import {
 export function CreateFolderDialog({
   profileId,
   parentId,
+  ancestorVisibility = "public",
   onCreated,
 }: {
   profileId?: string | null;
   parentId: string | null;
+  ancestorVisibility?: VocabularyVisibility;
   onCreated: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -74,17 +80,14 @@ export function CreateFolderDialog({
           type="button"
           className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-yellow-200 bg-white px-5 text-sm font-bold text-gray-800 shadow-sm shadow-yellow-100/60 transition-colors hover:bg-yellow-50"
         >
-          <Plus className="h-4 w-4 text-yellow-700" />
+          <FolderPlus className="h-4 w-4 text-yellow-700" />
           Tạo thư mục
         </button>
       </DialogTrigger>
 
-      <DialogContent className="overflow-hidden border border-yellow-100 bg-white p-0 shadow-2xl shadow-yellow-100/70 sm:max-w-md">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto border border-yellow-100 bg-white p-0 shadow-2xl shadow-yellow-100/70 sm:max-w-md">
         <div className="bg-[#FFFBEB] px-5 py-5">
           <DialogHeader>
-            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-yellow-300 text-gray-900">
-              <FolderPlus className="h-5 w-5" />
-            </div>
             <DialogTitle className="font-heading text-2xl font-bold text-gray-900">
               Tạo thư mục mới
             </DialogTitle>
@@ -94,23 +97,31 @@ export function CreateFolderDialog({
         <div className="grid gap-4 px-5 py-4">
           <label className="grid gap-2 text-sm font-bold text-gray-700">
             Tên thư mục
-            <Input value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
+            <Input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              autoFocus
+            />
           </label>
+          <VisibilityRestrictionNotice
+            itemType="folder"
+            visibility={visibility}
+            ancestorVisibility={ancestorVisibility}
+          />
           <label className="grid gap-2 text-sm font-bold text-gray-700">
             Mô tả
-            <Textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} />
+            <Textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={3}
+            />
           </label>
           <label className="grid gap-2 text-sm font-bold text-gray-700">
-            Visibility
-            <select
+            Quyền hiển thị
+            <VisibilitySelect
               value={visibility}
-              onChange={(event) => setVisibility(event.target.value as VocabularyVisibility)}
-              className="h-11 rounded-2xl border border-gray-200 bg-gray-50 px-4 text-sm font-medium outline-none focus:border-yellow-300 focus:ring-4 focus:ring-yellow-300/20"
-            >
-              <option value="private">Private</option>
-              <option value="unlisted">Unlisted</option>
-              <option value="public">Public</option>
-            </select>
+              onValueChange={setVisibility}
+            />
           </label>
 
           {error && (
@@ -121,10 +132,18 @@ export function CreateFolderDialog({
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t border-yellow-100 bg-[#FFFBEB] p-4 sm:flex-row sm:justify-end">
-          <Button variant="outline" onClick={() => setOpen(false)} className="h-10 rounded-full bg-white px-5 font-bold">
+          <Button
+            variant="outline"
+            onClick={() => setOpen(false)}
+            className="h-10 rounded-full bg-white px-5 font-bold"
+          >
             Hủy
           </Button>
-          <Button onClick={handleCreate} disabled={loading} className="h-10 rounded-full bg-gray-900 px-5 font-bold text-yellow-300 hover:bg-gray-700">
+          <Button
+            onClick={handleCreate}
+            disabled={loading}
+            className="h-10 rounded-full bg-gray-900 px-5 font-bold text-yellow-300 hover:bg-gray-700"
+          >
             {loading ? "Đang tạo..." : "Tạo thư mục"}
           </Button>
         </div>

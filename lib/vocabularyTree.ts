@@ -23,6 +23,7 @@ export interface VocabularyNode {
   child_deck_count: number;
   card_count: number;
   total_card_count: number;
+  save_count?: number;
   studied_count?: number;
   due_count?: number;
   legacy_deck_id?: string;
@@ -103,6 +104,47 @@ export async function fetchCommunityNodes(parentId: string | null) {
   if (!error && data) return data as VocabularyNode[];
   if (isMissingVocabularyTree(error)) return [];
   throw error;
+}
+
+export async function fetchSavedNodes(profileId: string) {
+  const { data, error } = await supabase
+    .from("vocabulary_saved_nodes")
+    .select("node_id, created_at")
+    .eq("user_id", profileId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    if (isMissingCommunityTables(error)) return [];
+    throw error;
+  }
+
+  const savedRows = (data ?? []) as Array<{ node_id: string; created_at: string }>;
+  if (savedRows.length === 0) return [];
+
+  const savedAtByNodeId = new Map(
+    savedRows.map((row) => [row.node_id, row.created_at]),
+  );
+
+  const { data: nodes, error: nodesError } = await supabase
+    .from("vocabulary_node_stats")
+    .select("*")
+    .in(
+      "id",
+      savedRows.map((row) => row.node_id),
+    );
+
+  if (nodesError) throw nodesError;
+
+  return ((nodes ?? []) as VocabularyNode[])
+    .map((node) => ({
+      ...node,
+      saved_at: savedAtByNodeId.get(node.id) ?? node.created_at,
+    }))
+    .sort((left, right) =>
+      String((right as VocabularyNode & { saved_at?: string }).saved_at).localeCompare(
+        String((left as VocabularyNode & { saved_at?: string }).saved_at),
+      ),
+    );
 }
 
 export async function fetchNode(nodeId: string) {
@@ -295,6 +337,70 @@ export async function copyCommunityNode(profileId: string, nodeId: string, paren
   }
 }
 
+export async function saveCommunityNode(profileId: string, nodeId: string) {
+  const { error } = await supabase.from("vocabulary_saved_nodes").upsert(
+    {
+      user_id: profileId,
+      node_id: nodeId,
+    },
+    { onConflict: "user_id,node_id" },
+  );
+
+  if (error) {
+    if (isMissingCommunityTables(error)) {
+      throw new Error("Cần chạy migration community_saves_reports để bật Lưu về học.");
+    }
+    throw error;
+  }
+}
+
+export async function unsaveCommunityNode(profileId: string, nodeId: string) {
+  const { error } = await supabase
+    .from("vocabulary_saved_nodes")
+    .delete()
+    .eq("user_id", profileId)
+    .eq("node_id", nodeId);
+
+  if (error) throw error;
+}
+
+export async function isCommunityNodeSaved(profileId: string, nodeId: string) {
+  const { data, error } = await supabase
+    .from("vocabulary_saved_nodes")
+    .select("id")
+    .eq("user_id", profileId)
+    .eq("node_id", nodeId)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingCommunityTables(error)) return false;
+    throw error;
+  }
+
+  return Boolean(data);
+}
+
+export async function reportCommunityNode(
+  profileId: string,
+  nodeId: string,
+  reason: string,
+  detail?: string,
+) {
+  const { error } = await supabase.from("vocabulary_reports").insert({
+    reporter_id: profileId,
+    node_id: nodeId,
+    reason,
+    detail: detail?.trim() || null,
+  });
+
+  if (error) {
+    if (isMissingCommunityTables(error)) {
+      throw new Error("Cần chạy migration community_saves_reports để bật Báo lỗi.");
+    }
+    throw error;
+  }
+}
+
 async function fetchLegacyDeckNodes(profileId: string) {
   const { data, error } = await supabase
     .from("deck_stats")
@@ -345,6 +451,20 @@ function isMissingVocabularyTree(error: unknown) {
     code === "42P01" ||
     message.includes("vocabulary_nodes") ||
     message.includes("vocabulary_node_stats") ||
+    message.includes("Could not find the table") ||
+    message.includes("schema cache")
+  );
+}
+
+function isMissingCommunityTables(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const message = "message" in error ? String(error.message) : "";
+  const code = "code" in error ? String(error.code) : "";
+
+  return (
+    code === "42P01" ||
+    message.includes("vocabulary_saved_nodes") ||
+    message.includes("vocabulary_reports") ||
     message.includes("Could not find the table") ||
     message.includes("schema cache")
   );

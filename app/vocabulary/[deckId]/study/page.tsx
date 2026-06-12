@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
+import { fetchNode } from "@/lib/vocabularyTree";
 
 interface Deck {
   id: string;
@@ -133,6 +134,12 @@ export default function StudyPage({
 }) {
   const { deckId } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const source = searchParams.get("source");
+  const backHref =
+    source === "community" || source === "saved"
+      ? `/vocabulary/${deckId}?source=${source}`
+      : `/vocabulary/${deckId}`;
   const [deck, setDeck] = useState<Deck | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [cards, setCards] = useState<StudyCard[]>([]);
@@ -188,16 +195,30 @@ export default function StudyPage({
         throw new Error("Không tìm thấy hồ sơ người dùng.");
       }
 
+      const node = await fetchNode(deckId);
+      const canReadNode =
+        Boolean(node) &&
+        node?.type === "deck" &&
+        (node.user_id === profileData.id ||
+          node.visibility === "public" ||
+          node.visibility === "unlisted");
+
+      if (!node || !canReadNode) {
+        setNotFound(true);
+        setDeck(null);
+        setCards([]);
+        return;
+      }
+
       const { data: deckData, error: deckError } = await supabase
         .from("decks")
         .select("id, name, description")
         .eq("id", deckId)
-        .eq("user_id", profileData.id)
         .maybeSingle();
 
       if (deckError) throw deckError;
 
-      if (!deckData) {
+      if (!deckData && !node) {
         setNotFound(true);
         setDeck(null);
         setCards([]);
@@ -214,7 +235,15 @@ export default function StudyPage({
       if (cardsError) throw cardsError;
 
       setProfile(profileData as Profile);
-      setDeck(deckData as Deck);
+      setDeck(
+        deckData
+          ? (deckData as Deck)
+          : {
+              id: node.id,
+              name: node.title,
+              description: node.description,
+            },
+      );
       setCards((cardData ?? []) as StudyCard[]);
       setCurrentIndex(0);
       setFlipped(false);
@@ -405,7 +434,7 @@ export default function StudyPage({
               asChild
               className="rounded-full bg-gray-900 font-bold text-yellow-300 hover:bg-gray-700"
             >
-              <Link href={`/vocabulary/${deckId}`}>Quay lại thêm từ</Link>
+              <Link href={backHref}>Quay lại bộ thẻ</Link>
             </Button>
           }
         />
@@ -439,7 +468,7 @@ export default function StudyPage({
               variant="outline"
               className="h-11 rounded-full bg-white px-5 font-bold"
             >
-              <Link href={`/vocabulary/${deckId}`}>Quay lại bộ thẻ</Link>
+              <Link href={backHref}>Quay lại bộ thẻ</Link>
             </Button>
           </div>
         </div>
@@ -457,7 +486,7 @@ export default function StudyPage({
               variant="ghost"
               className="h-10 w-fit gap-2 rounded-full px-3 font-bold text-slate-700 hover:bg-yellow-50"
             >
-              <Link href={`/vocabulary/${deckId}`}>
+              <Link href={backHref}>
                 <ArrowLeft className="h-4 w-4" />
                 Quay lại bộ thẻ
               </Link>

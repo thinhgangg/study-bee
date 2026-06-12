@@ -7,10 +7,12 @@ import {
   BookOpen,
   Copy,
   Edit3,
+  Eye,
   Files,
   Folder,
   FolderOpen,
   GraduationCap,
+  Heart,
   MoreHorizontal,
   MoveRight,
   Trash2,
@@ -24,7 +26,11 @@ export function VocabularyNodeCard({
   onDelete,
   onMove,
   onCopy,
+  onSave,
   folderHref,
+  deckHref,
+  studyHref,
+  variant = "mine",
 }: {
   node: VocabularyNode;
   editable: boolean;
@@ -32,17 +38,24 @@ export function VocabularyNodeCard({
   onDelete: (node: VocabularyNode) => void;
   onMove: (node: VocabularyNode) => void;
   onCopy?: (node: VocabularyNode) => void;
+  onSave?: (node: VocabularyNode) => void;
   folderHref?: (node: VocabularyNode) => string;
+  deckHref?: (node: VocabularyNode) => string;
+  studyHref?: (node: VocabularyNode) => string;
+  variant?: "mine" | "community" | "saved";
 }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const isFolder = node.type === "folder";
+  const isCommunity = variant === "community";
+  const isSaved = variant === "saved";
   const openHref = isFolder
     ? (folderHref?.(node) ?? `/vocabulary/folder/${node.id}`)
-    : `/vocabulary/deck/${node.id}`;
-  const studyHref = `/vocabulary/deck/${node.id}/study`;
+    : (deckHref?.(node) ?? `/vocabulary/deck/${node.id}`);
+  const nodeStudyHref = studyHref?.(node) ?? `/vocabulary/deck/${node.id}/study`;
   const studiedCount = Number(node.studied_count ?? 0);
   const dueCount = Number(node.due_count ?? 0);
+  const saveCount = Number(node.save_count ?? 0);
   const progress =
     node.card_count > 0
       ? Math.round((studiedCount / node.card_count) * 100)
@@ -67,7 +80,7 @@ export function VocabularyNodeCard({
           openNode();
         }
       }}
-      className="group relative flex min-h-[260px] cursor-pointer flex-col rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm shadow-yellow-100/60 transition-all duration-300 hover:-translate-y-1 hover:border-yellow-200 hover:shadow-xl hover:shadow-yellow-100/70 focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300/30"
+      className="group relative flex min-h-[280px] cursor-pointer flex-col rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm shadow-yellow-100/60 transition-all duration-300 hover:-translate-y-1 hover:border-yellow-200 hover:shadow-xl hover:shadow-yellow-100/70 focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300/30"
     >
       <div className="flex items-start justify-between gap-3">
         <div
@@ -85,9 +98,16 @@ export function VocabularyNodeCard({
         </div>
 
         <div className="flex items-center gap-1">
-          <span className="rounded-full border border-gray-100 bg-gray-50 px-2.5 py-1 text-xs font-bold capitalize text-gray-500">
-            {node.visibility}
-          </span>
+          {isCommunity || isSaved ? (
+            <span className="rounded-full border border-yellow-100 bg-yellow-50 px-2.5 py-1 text-xs font-bold text-yellow-700">
+              {saveCount} lưu
+            </span>
+          ) : (
+            <span className="rounded-full border border-gray-100 bg-gray-50 px-2.5 py-1 text-xs font-bold capitalize text-gray-500">
+              {node.visibility}
+            </span>
+          )}
+
           {editable && (
             <div
               className="relative z-30"
@@ -109,31 +129,31 @@ export function VocabularyNodeCard({
               </button>
               {menuOpen && (
                 <div className="absolute right-0 top-11 z-50 w-44 rounded-2xl border border-yellow-100 bg-white p-1 shadow-xl shadow-yellow-100/70">
-                <MenuButton
-                  icon={Edit3}
-                  label="Chỉnh sửa"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onRename(node);
-                  }}
-                />
-                <MenuButton
-                  icon={MoveRight}
-                  label="Di chuyển"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onMove(node);
-                  }}
-                />
-                <MenuButton
-                  danger
-                  icon={Trash2}
-                  label="Xóa"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onDelete(node);
-                  }}
-                />
+                  <MenuButton
+                    icon={Edit3}
+                    label="Chỉnh sửa"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onRename(node);
+                    }}
+                  />
+                  <MenuButton
+                    icon={MoveRight}
+                    label="Di chuyển"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onMove(node);
+                    }}
+                  />
+                  <MenuButton
+                    danger
+                    icon={Trash2}
+                    label="Xóa"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onDelete(node);
+                    }}
+                  />
                 </div>
               )}
             </div>
@@ -152,19 +172,24 @@ export function VocabularyNodeCard({
               : "Bộ từ StudyBee cho các từ vựng bạn muốn ôn mỗi ngày.")}
         </p>
 
+        {(isCommunity || isSaved) && (
+          <div className="mt-3 flex min-w-0 items-center justify-between gap-2 text-xs font-bold text-gray-400">
+            <span className="min-w-0 truncate">
+              Tác giả: {node.user_id.slice(0, 8)}
+            </span>
+            {node.level && (
+              <span className="shrink-0 rounded-full bg-gray-50 px-2 py-1 text-gray-500">
+                {node.level}
+              </span>
+            )}
+          </div>
+        )}
+
         {isFolder ? (
           <div className="mt-4 grid grid-cols-3 gap-2 text-xs font-bold text-gray-600">
-            <Stat
-              icon={FolderOpen}
-              value={node.child_folder_count}
-              label="thư mục"
-            />
+            <Stat icon={FolderOpen} value={node.child_folder_count} label="thư mục" />
             <Stat icon={Files} value={node.child_deck_count} label="bộ từ" />
-            <Stat
-              icon={GraduationCap}
-              value={node.total_card_count}
-              label="từ"
-            />
+            <Stat icon={GraduationCap} value={node.total_card_count} label="từ" />
           </div>
         ) : (
           <div className="mt-4 space-y-3">
@@ -174,22 +199,25 @@ export function VocabularyNodeCard({
                   <GraduationCap className="h-4 w-4 shrink-0 text-yellow-600" />
                   <span>{node.card_count} từ vựng</span>
                 </span>
-                <span className="shrink-0 text-gray-900">{progress}%</span>
+                {!isCommunity && !isSaved && (
+                  <span className="shrink-0 text-gray-900">{progress}%</span>
+                )}
               </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-yellow-100">
-                <div
-                  className="h-full rounded-full bg-yellow-400 transition-all duration-500"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              {dueCount > 0 && (
+              {!isCommunity && !isSaved && (
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-yellow-100">
+                  <div
+                    className="h-full rounded-full bg-yellow-400 transition-all duration-500"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              )}
+              {dueCount > 0 && !isCommunity && !isSaved && (
                 <p className="mt-2 text-xs font-bold text-rose-600">
                   {dueCount} từ cần ôn
                 </p>
               )}
             </div>
             <div className="flex flex-wrap gap-2">
-              {node.level && <Chip>{node.level}</Chip>}
               {node.category && <Chip>{node.category}</Chip>}
               {node.tags.slice(0, 2).map((tag) => (
                 <Chip key={tag}>{tag}</Chip>
@@ -214,21 +242,42 @@ export function VocabularyNodeCard({
         ) : (
           <>
             <Link
-              href={studyHref}
+              href={nodeStudyHref}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-gray-900 px-4 text-sm font-bold text-yellow-300 transition-colors hover:bg-gray-700"
             >
               <GraduationCap className="h-4 w-4" />
-              Học ngay
+              {isCommunity || isSaved ? "Học" : "Học ngay"}
             </Link>
             <Link
               href={openHref}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-4 text-sm font-bold text-gray-700 transition-colors hover:bg-yellow-50"
             >
-              Xem bộ thẻ
+              {isCommunity || isSaved ? (
+                <>
+                  <Eye className="h-4 w-4" />
+                  Xem
+                </>
+              ) : (
+                "Xem bộ thẻ"
+              )}
             </Link>
           </>
         )}
       </div>
+
+      {isCommunity && onSave && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onSave(node);
+          }}
+          className="mt-2 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-gray-900 px-4 text-sm font-bold text-yellow-300 transition-colors hover:bg-gray-700"
+        >
+          <Heart className="h-4 w-4" />
+          Lưu về học
+        </button>
+      )}
 
       {!editable && onCopy && (
         <button
@@ -240,7 +289,7 @@ export function VocabularyNodeCard({
           className="mt-2 inline-flex h-10 items-center justify-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-4 text-sm font-bold text-yellow-800 transition-colors hover:bg-yellow-100"
         >
           <Copy className="h-4 w-4" />
-          Sao chép về bộ của tôi
+          Sao chép để chỉnh sửa
         </button>
       )}
     </article>

@@ -9,7 +9,7 @@ export function VocabularyBreadcrumb({
   basePath,
 }: {
   items: VocabularyNode[];
-  basePath: "/vocabulary" | "/vocabulary?tab=community";
+  basePath: "/vocabulary" | "/vocabulary?tab=community" | "/vocabulary?tab=saved";
 }) {
   return (
     <nav className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm font-bold text-gray-500">
@@ -26,6 +26,8 @@ export function VocabularyBreadcrumb({
         const href =
           basePath === "/vocabulary?tab=community"
             ? `/vocabulary?tab=community&folder=${item.id}`
+            : basePath === "/vocabulary?tab=saved"
+              ? "/vocabulary?tab=saved"
             : `/vocabulary/folder/${item.id}`;
 
         return (

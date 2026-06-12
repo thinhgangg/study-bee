@@ -11,7 +11,11 @@ export function VocabularyNodeGrid({
   onDelete,
   onMove,
   onCopy,
+  onSave,
   folderHref,
+  deckHref,
+  studyHref,
+  variant = "mine",
 }: {
   nodes: VocabularyNode[];
   editable: boolean;
@@ -19,7 +23,11 @@ export function VocabularyNodeGrid({
   onDelete: (node: VocabularyNode) => void;
   onMove: (node: VocabularyNode) => void;
   onCopy?: (node: VocabularyNode) => void;
+  onSave?: (node: VocabularyNode) => void;
   folderHref?: (node: VocabularyNode) => string;
+  deckHref?: (node: VocabularyNode) => string;
+  studyHref?: (node: VocabularyNode) => string;
+  variant?: "mine" | "community" | "saved";
 }) {
   if (nodes.length === 0) {
     return (
@@ -48,7 +56,11 @@ export function VocabularyNodeGrid({
           onDelete={onDelete}
           onMove={onMove}
           onCopy={onCopy}
+          onSave={onSave}
           folderHref={folderHref}
+          deckHref={deckHref}
+          studyHref={studyHref}
+          variant={variant}
         />
       ))}
     </div>

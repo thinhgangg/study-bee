@@ -20,7 +20,9 @@ import {
   fetchBreadcrumb,
   fetchCommunityNodes,
   fetchMyNodes,
+  fetchSavedNodes,
   getCurrentProfile,
+  saveCommunityNode,
   type VocabularyNode,
   type VocabularyProfile,
 } from "@/lib/vocabularyTree";
@@ -62,7 +64,7 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
               fetchBreadcrumb(activeFolderId),
             ])
           : activeTab === "saved"
-            ? [[], []]
+            ? [await fetchSavedNodes(currentProfile.id), []]
             : await Promise.all([
                 fetchMyNodes(currentProfile.id, activeFolderId),
                 fetchBreadcrumb(activeFolderId),
@@ -119,6 +121,28 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
       router.push("/vocabulary");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Không thể sao chép.");
+    }
+  }
+
+  async function handleSave(node: VocabularyNode) {
+    if (!profile) return;
+    setError("");
+
+    try {
+      await saveCommunityNode(profile.id, node.id);
+      if (activeTab === "community") {
+        setNodes((current) =>
+          current.map((item) =>
+            item.id === node.id
+              ? { ...item, save_count: Number(item.save_count ?? 0) + 1 }
+              : item,
+          ),
+        );
+      } else {
+        await loadNodes();
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Không thể lưu bộ này.");
     }
   }
 
@@ -217,7 +241,7 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
         <div className="mt-6">
           {loading ? (
             <VocabularyGridSkeleton />
-          ) : activeTab === "saved" ? (
+          ) : activeTab === "saved" && filteredNodes.length === 0 ? (
             <PublicEmptyState />
           ) : activeTab === "community" && filteredNodes.length === 0 ? (
             <PublicEmptyState />
@@ -229,10 +253,28 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
               onDelete={handleDelete}
               onMove={setMoveNode}
               onCopy={activeTab === "community" ? handleCopy : undefined}
+              onSave={activeTab === "community" ? handleSave : undefined}
+              variant={activeTab}
               folderHref={(node) =>
                 activeTab === "community"
                   ? `/vocabulary?tab=community&folder=${node.id}`
-                  : `/vocabulary/folder/${node.id}`
+                  : activeTab === "saved"
+                    ? `/vocabulary?tab=community&folder=${node.id}`
+                    : `/vocabulary/folder/${node.id}`
+              }
+              deckHref={(node) =>
+                activeTab === "community"
+                  ? `/vocabulary/deck/${node.id}?source=community`
+                  : activeTab === "saved"
+                    ? `/vocabulary/deck/${node.id}?source=saved`
+                    : `/vocabulary/deck/${node.id}`
+              }
+              studyHref={(node) =>
+                activeTab === "community"
+                  ? `/vocabulary/deck/${node.id}/study?source=community`
+                  : activeTab === "saved"
+                    ? `/vocabulary/deck/${node.id}/study?source=saved`
+                    : `/vocabulary/deck/${node.id}/study`
               }
             />
           )}

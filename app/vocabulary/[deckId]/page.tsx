@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   BookOpen,
   BookOpenCheck,
   CheckCircle2,
   Clock3,
+  Copy,
   Edit3,
+  Flag,
+  Heart,
   ImageIcon,
   PlayCircle,
   Plus,
@@ -28,7 +31,15 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
-import { fetchBreadcrumb, type VocabularyNode } from "@/lib/vocabularyTree";
+import {
+  copyCommunityNode,
+  fetchBreadcrumb,
+  fetchNode,
+  isCommunityNodeSaved,
+  reportCommunityNode,
+  saveCommunityNode,
+  type VocabularyNode,
+} from "@/lib/vocabularyTree";
 
 interface Deck {
   id: string;
@@ -179,7 +190,10 @@ export default function DeckDetailPage({
 
 function VocabularyDeckPage({ deckId }: { deckId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const source = searchParams.get("source");
   const [deck, setDeck] = useState<Deck | null>(null);
+  const [deckNode, setDeckNode] = useState<VocabularyNode | null>(null);
   const [breadcrumb, setBreadcrumb] = useState<VocabularyNode[]>([]);
   const [cards, setCards] = useState<VocabularyCardData[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -190,6 +204,10 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<CardFilter>("all");
+  const [readOnly, setReadOnly] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const communityBasePath =
+    source === "saved" ? "/vocabulary?tab=saved" : "/vocabulary?tab=community";
 
   const loadDeck = useCallback(async () => {
     setLoading(true);
@@ -216,18 +234,39 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
         throw new Error("Không tìm thấy hồ sơ người dùng.");
       }
 
-      setProfile({ id: profileData.id, email: user.email ?? "" });
+      const currentProfile = { id: profileData.id as string, email: user.email ?? "" };
+      setProfile(currentProfile);
+
+      const node = await fetchNode(deckId);
+      const canReadNode =
+        Boolean(node) &&
+        node?.type === "deck" &&
+        (node.user_id === currentProfile.id ||
+          node.visibility === "public" ||
+          node.visibility === "unlisted");
+
+      if (!node || !canReadNode) {
+        setDeck(null);
+        setDeckNode(null);
+        setBreadcrumb([]);
+        setCards([]);
+        setNotFound(true);
+        return;
+      }
+
+      const nextReadOnly = node.user_id !== currentProfile.id;
+      setDeckNode(node);
+      setReadOnly(nextReadOnly);
 
       const { data: deckData, error: deckError } = await supabase
         .from("decks")
         .select("id, name, description, cover_image_url, card_count")
         .eq("id", deckId)
-        .eq("user_id", profileData.id)
         .maybeSingle();
 
       if (deckError) throw deckError;
 
-      if (!deckData) {
+      if (!deckData && !node) {
         setDeck(null);
         setBreadcrumb([]);
         setCards([]);
@@ -236,6 +275,9 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
       }
 
       const deckBreadcrumb = await fetchBreadcrumb(deckId);
+      const alreadySaved = nextReadOnly
+        ? await isCommunityNodeSaved(currentProfile.id, deckId)
+        : false;
 
       const { data: cardData, error: cardsError } = await supabase
         .from("cards")
@@ -280,7 +322,18 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
         };
       });
 
-      setDeck(deckData as Deck);
+      setSaved(alreadySaved);
+      setDeck(
+        deckData
+          ? (deckData as Deck)
+          : {
+              id: node.id,
+              name: node.title,
+              description: node.description,
+              cover_image_url: null,
+              card_count: node.card_count,
+            },
+      );
       setBreadcrumb(deckBreadcrumb);
       setCards(mergedCards);
     } catch (err: unknown) {
@@ -392,6 +445,48 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
     router.replace("/login");
   }
 
+  async function handleSaveCommunityDeck() {
+    if (!profile) return;
+    setError("");
+
+    try {
+      await saveCommunityNode(profile.id, deckId);
+      setSaved(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Không thể lưu bộ này.");
+    }
+  }
+
+  async function handleCopyCommunityDeck() {
+    if (!profile) return;
+    setError("");
+
+    try {
+      await copyCommunityNode(profile.id, deckId, null);
+      router.push("/vocabulary");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Không thể sao chép bộ này.");
+    }
+  }
+
+  async function handleReportCommunityDeck() {
+    if (!profile) return;
+
+    const detail = window.prompt(
+      "Bạn muốn báo lỗi gì? Ví dụ: nội dung sai, spam, vi phạm, hình ảnh không phù hợp...",
+    );
+    if (!detail?.trim()) return;
+
+    setError("");
+
+    try {
+      await reportCommunityNode(profile.id, deckId, "content_issue", detail);
+      window.alert("Đã gửi báo lỗi. Cảm ơn bạn đã giúp StudyBee sạch hơn.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Không thể gửi báo lỗi.");
+    }
+  }
+
   if (loading) return <DeckDetailSkeleton />;
 
   if (notFound) {
@@ -438,14 +533,24 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
         {deck && (
           <>
             <div className="mb-4">
-              <VocabularyBreadcrumb items={breadcrumb} basePath="/vocabulary" />
+              <VocabularyBreadcrumb
+                items={breadcrumb}
+                basePath={readOnly ? communityBasePath : "/vocabulary"}
+              />
             </div>
 
             <DeckHeader
               deck={deck}
               deckId={deckId}
+              deckNode={deckNode}
+              source={source}
               progress={progress}
+              readOnly={readOnly}
+              saved={saved}
               onCardCreated={loadDeck}
+              onSave={handleSaveCommunityDeck}
+              onCopy={handleCopyCommunityDeck}
+              onReport={handleReportCommunityDeck}
             />
 
             <DeckToolbar
@@ -456,7 +561,11 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
             />
 
             {cards.length === 0 ? (
-              <EmptyDeckState deckId={deckId} onCardCreated={loadDeck} />
+              <EmptyDeckState
+                deckId={deckId}
+                readOnly={readOnly}
+                onCardCreated={loadDeck}
+              />
             ) : filteredCards.length === 0 ? (
               <section className="mt-6 rounded-3xl border border-yellow-100 bg-white px-6 py-14 text-center shadow-sm shadow-yellow-100/60">
                 <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-yellow-100 text-yellow-700">
@@ -475,6 +584,7 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
                   <VocabularyCard
                     key={card.id}
                     card={card}
+                    readOnly={readOnly}
                     onOpen={() => setSelectedVocabulary(card)}
                     onCardUpdated={loadDeck}
                   />
@@ -500,11 +610,20 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
 function DeckHeader({
   deck,
   deckId,
+  deckNode,
+  source,
   progress,
+  readOnly,
+  saved,
   onCardCreated,
+  onSave,
+  onCopy,
+  onReport,
 }: {
   deck: Deck;
   deckId: string;
+  deckNode: VocabularyNode | null;
+  source: string | null;
   progress: {
     total: number;
     mastered: number;
@@ -512,7 +631,12 @@ function DeckHeader({
     studied: number;
     percent: number;
   };
+  readOnly: boolean;
+  saved: boolean;
   onCardCreated: () => void | Promise<void>;
+  onSave: () => void | Promise<void>;
+  onCopy: () => void | Promise<void>;
+  onReport: () => void | Promise<void>;
 }) {
   return (
     <section className="rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm shadow-yellow-100/50 lg:p-5">
@@ -538,12 +662,46 @@ function DeckHeader({
 
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
           <Link
-            href={`/vocabulary/${deckId}/study`}
+            href={
+              readOnly
+                ? `/vocabulary/${deckId}/study?source=${source === "saved" ? "saved" : "community"}`
+                : `/vocabulary/${deckId}/study`
+            }
             className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-gray-900 px-5 text-sm font-bold text-yellow-300 shadow-lg shadow-gray-900/10 transition-colors hover:bg-gray-700"
           >
             <PlayCircle className="h-4 w-4" />
             Học ngay
           </Link>
+          {readOnly ? (
+            <>
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={saved}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-yellow-400 px-5 text-sm font-bold text-gray-900 shadow-lg shadow-yellow-200/60 transition-colors hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <Heart className="h-4 w-4" />
+                {saved ? "Đã lưu" : "Lưu về học"}
+              </button>
+              <button
+                type="button"
+                onClick={onCopy}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-5 text-sm font-bold text-yellow-800 transition-colors hover:bg-yellow-100"
+              >
+                <Copy className="h-4 w-4" />
+                Sao chép
+              </button>
+              <button
+                type="button"
+                onClick={onReport}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-5 text-sm font-bold text-gray-600 transition-colors hover:bg-gray-50"
+              >
+                <Flag className="h-4 w-4" />
+                Báo lỗi
+              </button>
+            </>
+          ) : (
+            <>
           <ImportVocabularyDialog deckId={deckId} onImported={onCardCreated} />
           <AddCardDialog
             deckId={deckId}
@@ -559,8 +717,34 @@ function DeckHeader({
               </button>
             }
           />
+            </>
+          )}
         </div>
       </div>
+
+      {readOnly && (
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-yellow-100 pt-4 text-xs font-bold text-gray-500">
+          <span className="rounded-full bg-yellow-50 px-3 py-1 text-yellow-700">
+            Bộ cộng đồng
+          </span>
+          <span className="rounded-full bg-gray-50 px-3 py-1">
+            Tác giả: {deckNode?.user_id.slice(0, 8) ?? "StudyBee"}
+          </span>
+          {deckNode?.level && (
+            <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">
+              {deckNode.level}
+            </span>
+          )}
+          {deckNode?.category && (
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+              {deckNode.category}
+            </span>
+          )}
+          <span className="rounded-full bg-gray-50 px-3 py-1">
+            {Number(deckNode?.save_count ?? 0)} lượt lưu
+          </span>
+        </div>
+      )}
 
       <CompactProgressSummary progress={progress} />
     </section>
@@ -760,10 +944,12 @@ function SummaryItem({
 
 function VocabularyCard({
   card,
+  readOnly,
   onOpen,
   onCardUpdated,
 }: {
   card: VocabularyCardData;
+  readOnly: boolean;
   onOpen: () => void;
   onCardUpdated: () => void | Promise<void>;
 }) {
@@ -832,6 +1018,7 @@ function VocabularyCard({
         </div>
       </button>
 
+      {!readOnly && (
       <div className="mt-auto flex items-center justify-end border-t border-gray-100 pt-3">
         <AddCardDialog
           deckId={card.deck_id}
@@ -848,6 +1035,7 @@ function VocabularyCard({
           }
         />
       </div>
+      )}
     </article>
   );
 }
@@ -1113,9 +1301,11 @@ function RelatedTagSection({
 
 function EmptyDeckState({
   deckId,
+  readOnly,
   onCardCreated,
 }: {
   deckId: string;
+  readOnly: boolean;
   onCardCreated: () => void | Promise<void>;
 }) {
   return (
@@ -1129,6 +1319,7 @@ function EmptyDeckState({
       <p className="mt-2 max-w-sm text-sm leading-relaxed text-gray-500">
         Tạo thẻ đầu tiên bằng AI để bắt đầu học từ vựng trong bộ này.
       </p>
+      {!readOnly && (
       <div className="mt-6">
         <AddCardDialog
           deckId={deckId}
@@ -1136,6 +1327,7 @@ function EmptyDeckState({
           triggerLabel="Thêm từ đầu tiên"
         />
       </div>
+      )}
     </section>
   );
 }

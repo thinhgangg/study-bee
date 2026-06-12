@@ -680,7 +680,7 @@ function DeckHeader({
                 disabled={saved}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-yellow-400 px-5 text-sm font-bold text-gray-900 shadow-lg shadow-yellow-200/60 transition-colors hover:bg-yellow-300 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                <Heart className="h-4 w-4" />
+                <Heart className={`h-4 w-4 ${saved ? "fill-current" : ""}`} />
                 {saved ? "Đã lưu" : "Lưu về học"}
               </button>
               <button

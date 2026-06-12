@@ -20,9 +20,11 @@ import {
   fetchBreadcrumb,
   fetchCommunityNodes,
   fetchMyNodes,
+  fetchSavedNodeIds,
   fetchSavedNodes,
   getCurrentProfile,
   saveCommunityNode,
+  unsaveCommunityNode,
   type VocabularyNode,
   type VocabularyProfile,
 } from "@/lib/vocabularyTree";
@@ -70,7 +72,19 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
                 fetchBreadcrumb(activeFolderId),
               ]);
 
-      setNodes(nextNodes);
+      if (activeTab === "community") {
+        const savedNodeIds = await fetchSavedNodeIds(currentProfile.id);
+        setNodes(
+          nextNodes.map((node) => ({
+            ...node,
+            saved_by_me: savedNodeIds.has(node.id),
+          })),
+        );
+      } else if (activeTab === "saved") {
+        setNodes(nextNodes.map((node) => ({ ...node, saved_by_me: true })));
+      } else {
+        setNodes(nextNodes);
+      }
       setBreadcrumb(nextBreadcrumb);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Có lỗi xảy ra.";
@@ -127,14 +141,39 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
   async function handleSave(node: VocabularyNode) {
     if (!profile) return;
     setError("");
+    const alreadySaved = Boolean(node.saved_by_me);
 
     try {
+      if (alreadySaved) {
+        await unsaveCommunityNode(profile.id, node.id);
+        if (activeTab === "saved") {
+          setNodes((current) => current.filter((item) => item.id !== node.id));
+          return;
+        }
+        setNodes((current) =>
+          current.map((item) =>
+            item.id === node.id
+              ? {
+                  ...item,
+                  saved_by_me: false,
+                  save_count: Math.max(Number(item.save_count ?? 0) - 1, 0),
+                }
+              : item,
+          ),
+        );
+        return;
+      }
+
       await saveCommunityNode(profile.id, node.id);
       if (activeTab === "community") {
         setNodes((current) =>
           current.map((item) =>
             item.id === node.id
-              ? { ...item, save_count: Number(item.save_count ?? 0) + 1 }
+              ? {
+                  ...item,
+                  saved_by_me: true,
+                  save_count: Number(item.save_count ?? 0) + 1,
+                }
               : item,
           ),
         );
@@ -253,7 +292,11 @@ export function VocabularyPage({ folderId = null }: { folderId?: string | null }
               onDelete={handleDelete}
               onMove={setMoveNode}
               onCopy={activeTab === "community" ? handleCopy : undefined}
-              onSave={activeTab === "community" ? handleSave : undefined}
+              onSave={
+                activeTab === "community" || activeTab === "saved"
+                  ? handleSave
+                  : undefined
+              }
               variant={activeTab}
               folderHref={(node) =>
                 activeTab === "community"

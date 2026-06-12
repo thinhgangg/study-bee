@@ -60,9 +60,16 @@ export function VocabularyNodeCard({
   const studiedCount = Number(node.studied_count ?? 0);
   const dueCount = Number(node.due_count ?? 0);
   const saveCount = Number(node.save_count ?? 0);
+  const savedByMe = Boolean(node.saved_by_me);
+  const visibilityLabel = {
+    public: "Công khai",
+    private: "Riêng tư",
+    unlisted: "Ẩn",
+  }[node.visibility] ?? node.visibility;
+  const progressTotal = isFolder ? node.total_card_count : node.card_count;
   const progress =
-    node.card_count > 0
-      ? Math.round((studiedCount / node.card_count) * 100)
+    progressTotal > 0
+      ? Math.round((studiedCount / progressTotal) * 100)
       : 0;
 
   function openNode() {
@@ -132,7 +139,7 @@ export function VocabularyNodeCard({
             </span>
           ) : (
             <span className="rounded-full border border-gray-100 bg-gray-50 px-2.5 py-1 text-xs font-bold capitalize text-gray-500">
-              {node.visibility}
+              {visibilityLabel}
             </span>
           )}
 
@@ -194,7 +201,7 @@ export function VocabularyNodeCard({
         <h3 className="line-clamp-2 break-words font-heading text-xl font-bold leading-tight text-gray-900">
           {node.title}
         </h3>
-        <p className="mt-2 line-clamp-2 min-h-[40px] text-sm leading-relaxed text-gray-500">
+        <p className="mt-2 h-10 line-clamp-2 text-sm leading-5 text-gray-500">
           {node.description ||
             (isFolder
               ? "Sắp xếp các thư mục con và bộ từ theo chủ đề học của bạn."
@@ -214,7 +221,28 @@ export function VocabularyNodeCard({
           </div>
         )}
 
-        {isFolder ? (
+        {isSaved && !isFolder ? (
+          <div className="mt-4 rounded-2xl bg-[#FFFBEB] px-3 py-2">
+            <div className="flex items-center justify-between gap-3 text-sm font-bold text-gray-700">
+              <span className="flex min-w-0 items-center gap-2">
+                <GraduationCap className="h-4 w-4 shrink-0 text-yellow-600" />
+                <span>{progressTotal} từ vựng</span>
+              </span>
+              <span className="shrink-0 text-gray-900">{progress}%</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-yellow-100">
+              <div
+                className="h-full rounded-full bg-yellow-400 transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            {dueCount > 0 && (
+              <p className="mt-2 text-xs font-bold text-rose-600">
+                {dueCount} từ cần ôn
+              </p>
+            )}
+          </div>
+        ) : isFolder ? (
           <div className="mt-4 grid grid-cols-3 gap-2 text-xs font-bold text-gray-600">
             <Stat icon={FolderOpen} value={node.child_folder_count} label="thư mục" />
             <Stat icon={Files} value={node.child_deck_count} label="bộ từ" />
@@ -228,11 +256,11 @@ export function VocabularyNodeCard({
                   <GraduationCap className="h-4 w-4 shrink-0 text-yellow-600" />
                   <span>{node.card_count} từ vựng</span>
                 </span>
-                {!isCommunity && !isSaved && (
+                {!isCommunity && (
                   <span className="shrink-0 text-gray-900">{progress}%</span>
                 )}
               </div>
-              {!isCommunity && !isSaved && (
+              {!isCommunity && (
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-yellow-100">
                   <div
                     className="h-full rounded-full bg-yellow-400 transition-all duration-500"
@@ -240,7 +268,7 @@ export function VocabularyNodeCard({
                   />
                 </div>
               )}
-              {dueCount > 0 && !isCommunity && !isSaved && (
+              {dueCount > 0 && !isCommunity && (
                 <p className="mt-2 text-xs font-bold text-rose-600">
                   {dueCount} từ cần ôn
                 </p>
@@ -294,7 +322,7 @@ export function VocabularyNodeCard({
         )}
       </div>
 
-      {isCommunity && onSave && (
+      {(isCommunity || isSaved) && onSave && (
         <button
           type="button"
           onClick={(event) => {
@@ -303,8 +331,8 @@ export function VocabularyNodeCard({
           }}
           className="mt-2 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-gray-900 px-4 text-sm font-bold text-yellow-300 transition-colors hover:bg-gray-700"
         >
-          <Heart className="h-4 w-4" />
-          Lưu về học
+          <Heart className={`h-4 w-4 ${savedByMe ? "fill-current" : ""}`} />
+          {savedByMe ? "Bỏ lưu" : "Lưu về học"}
         </button>
       )}
 
@@ -335,11 +363,11 @@ function Stat({
   label: string;
 }) {
   return (
-    <div className="rounded-2xl bg-gray-50 px-3 py-2">
+    <div className="min-w-0 rounded-2xl bg-gray-50 px-3 py-2">
       <Icon className="mb-1 h-4 w-4 text-yellow-600" />
-      <div className="leading-tight">
+      <div className="flex min-w-0 items-baseline gap-1 whitespace-nowrap leading-tight">
         <span className="text-gray-900">{value}</span>
-        <span className="block text-[11px] text-gray-400">{label}</span>
+        <span className="truncate text-[11px] text-gray-400">{label}</span>
       </div>
     </div>
   );

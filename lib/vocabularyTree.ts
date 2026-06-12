@@ -24,6 +24,7 @@ export interface VocabularyNode {
   card_count: number;
   total_card_count: number;
   save_count?: number;
+  saved_by_me?: boolean;
   studied_count?: number;
   due_count?: number;
   legacy_deck_id?: string;
@@ -135,9 +136,19 @@ export async function fetchSavedNodes(profileId: string) {
 
   if (nodesError) throw nodesError;
 
-  return ((nodes ?? []) as VocabularyNode[])
+  const enrichedNodes = await enrichNodesWithProfileProgress(
+    ((nodes ?? []) as VocabularyNode[]).map((node) => ({
+      ...node,
+      saved_by_me: true,
+      saved_at: savedAtByNodeId.get(node.id) ?? node.created_at,
+    })),
+    profileId,
+  );
+
+  return enrichedNodes
     .map((node) => ({
       ...node,
+      saved_by_me: true,
       saved_at: savedAtByNodeId.get(node.id) ?? node.created_at,
     }))
     .sort((left, right) =>
@@ -145,6 +156,118 @@ export async function fetchSavedNodes(profileId: string) {
         String((left as VocabularyNode & { saved_at?: string }).saved_at),
       ),
     );
+}
+
+async function enrichNodesWithProfileProgress(
+  nodes: Array<VocabularyNode & { saved_at?: string }>,
+  profileId: string,
+) {
+  if (nodes.length === 0) return nodes;
+
+  const { data: treeData, error: treeError } = await supabase
+    .from("vocabulary_nodes")
+    .select("id, parent_id, type")
+    .eq("visibility", "public");
+
+  if (treeError) return nodes;
+
+  const treeNodes = (treeData ?? []) as Array<{
+    id: string;
+    parent_id: string | null;
+    type: VocabularyNodeType;
+  }>;
+  const childrenByParentId = new Map<string, typeof treeNodes>();
+
+  for (const treeNode of treeNodes) {
+    if (!treeNode.parent_id) continue;
+    const siblings = childrenByParentId.get(treeNode.parent_id) ?? [];
+    siblings.push(treeNode);
+    childrenByParentId.set(treeNode.parent_id, siblings);
+  }
+
+  function collectDeckIds(nodeId: string): string[] {
+    const node = treeNodes.find((item) => item.id === nodeId);
+    if (!node) return [];
+    if (node.type === "deck") return [node.id];
+
+    return (childrenByParentId.get(node.id) ?? []).flatMap((child) =>
+      collectDeckIds(child.id),
+    );
+  }
+
+  const deckIdsByNodeId = new Map(
+    nodes.map((node) => [node.id, collectDeckIds(node.id)]),
+  );
+  const deckIds = [...new Set([...deckIdsByNodeId.values()].flat())];
+  if (deckIds.length === 0) return nodes;
+
+  const { data: cardData, error: cardError } = await supabase
+    .from("cards")
+    .select("id, deck_id")
+    .in("deck_id", deckIds);
+
+  if (cardError) return nodes;
+
+  const cards = (cardData ?? []) as Array<{ id: string; deck_id: string }>;
+  const cardIds = cards.map((card) => card.id);
+  if (cardIds.length === 0) {
+    return nodes.map((node) => ({
+      ...node,
+      studied_count: 0,
+      due_count: 0,
+    }));
+  }
+
+  const { data: reviewData, error: reviewError } = await supabase
+    .from("card_reviews")
+    .select("card_id, reviewed_at, next_review_at")
+    .eq("user_id", profileId)
+    .in("card_id", cardIds);
+
+  if (reviewError) return nodes;
+
+  const reviewsByCardId = new Map(
+    ((reviewData ?? []) as Array<{
+      card_id: string;
+      reviewed_at: string | null;
+      next_review_at: string | null;
+    }>).map((review) => [review.card_id, review]),
+  );
+  const now = new Date();
+
+  return nodes.map((node) => {
+    const nodeDeckIds = new Set(deckIdsByNodeId.get(node.id) ?? []);
+    const nodeCards = cards.filter((card) => nodeDeckIds.has(card.deck_id));
+    const studiedCount = nodeCards.filter(
+      (card) => reviewsByCardId.get(card.id)?.reviewed_at,
+    ).length;
+    const dueCount = nodeCards.filter((card) => {
+      const nextReviewAt = reviewsByCardId.get(card.id)?.next_review_at;
+      return nextReviewAt ? new Date(nextReviewAt) <= now : false;
+    }).length;
+
+    return {
+      ...node,
+      card_count: node.type === "deck" ? nodeCards.length : node.card_count,
+      total_card_count: nodeCards.length,
+      studied_count: studiedCount,
+      due_count: dueCount,
+    };
+  });
+}
+
+export async function fetchSavedNodeIds(profileId: string) {
+  const { data, error } = await supabase
+    .from("vocabulary_saved_nodes")
+    .select("node_id")
+    .eq("user_id", profileId);
+
+  if (error) {
+    if (isMissingCommunityTables(error)) return new Set<string>();
+    throw error;
+  }
+
+  return new Set(((data ?? []) as Array<{ node_id: string }>).map((row) => row.node_id));
 }
 
 export async function fetchNode(nodeId: string) {

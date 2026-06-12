@@ -499,7 +499,7 @@ export default function StudyPage({
           >
             <div className="[perspective:1400px]">
               <div
-                className={`relative h-[clamp(330px,50vh,470px)] transition-transform duration-500 ease-out [transform-style:preserve-3d] sm:h-[clamp(360px,52vh,500px)] ${
+                className={`relative h-[clamp(360px,58vh,560px)] transition-transform duration-500 ease-out [transform-style:preserve-3d] sm:h-[clamp(390px,60vh,600px)] ${
                   flipped ? "[transform:rotateY(180deg)]" : ""
                 }`}
               >
@@ -604,30 +604,30 @@ function CardBack({
   hintItems: string[];
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col items-center justify-center text-center">
+    <div className="flex h-full min-h-0 flex-col items-center overflow-y-auto overscroll-contain px-1 py-1 text-center [scrollbar-width:thin] [scrollbar-color:#FACC15_transparent]">
       {card.image_url ? (
         <img
           src={card.image_url}
           alt={card.word}
-          className="mb-4 h-28 w-44 rounded-3xl object-cover shadow-sm sm:h-32 sm:w-52"
+          className="mb-4 h-24 w-40 shrink-0 rounded-3xl object-cover shadow-sm sm:h-28 sm:w-48"
         />
       ) : (
-        <div className="mb-4 flex h-24 w-36 items-center justify-center rounded-3xl bg-yellow-50 text-yellow-700 sm:h-28 sm:w-44">
+        <div className="mb-4 flex h-20 w-32 shrink-0 items-center justify-center rounded-3xl bg-yellow-50 text-yellow-700 sm:h-24 sm:w-40">
           <ImageIcon className="h-8 w-8" />
         </div>
       )}
 
-      <h2 className="line-clamp-2 max-w-xl break-words font-heading text-2xl font-bold leading-tight text-amber-700 sm:text-3xl">
+      <h2 className="max-w-xl break-words font-heading text-xl font-bold leading-snug text-amber-700 sm:text-2xl">
         {card.vietnamese_meaning || "Chưa có nghĩa tiếng Việt"}
       </h2>
 
       {card.english_example ? (
-        <div className="mt-5 max-w-xl rounded-3xl bg-slate-50 px-4 py-3 text-left">
-          <p className="line-clamp-2 break-words text-sm font-medium italic leading-relaxed text-slate-800 sm:text-base">
+        <div className="mt-5 w-full max-w-xl shrink-0 rounded-3xl bg-slate-50 px-4 py-3 text-left">
+          <p className="break-words text-sm font-medium italic leading-relaxed text-slate-800 sm:text-base">
             &ldquo;{card.english_example}&rdquo;
           </p>
           {card.vietnamese_example && (
-            <p className="mt-2 line-clamp-2 break-words text-sm leading-relaxed text-slate-600">
+            <p className="mt-2 break-words text-sm leading-relaxed text-slate-600">
               {card.vietnamese_example}
             </p>
           )}

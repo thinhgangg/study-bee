@@ -1,11 +1,19 @@
+"use client";
+
 import { Suspense } from "react";
+import { use } from "react";
 import { VocabularyPage } from "@/components/vocabulary/VocabularyPage";
 import { VocabularyGridSkeleton } from "@/components/vocabulary/VocabularyNodeGrid";
 
-export default function Page() {
+export default function FolderPage({
+  params,
+}: {
+  params: Promise<{ folderId: string }>;
+}) {
+  const { folderId } = use(params);
   return (
     <Suspense fallback={<VocabularyShellFallback />}>
-      <VocabularyPage />
+      <VocabularyPage folderId={folderId} />
     </Suspense>
   );
 }

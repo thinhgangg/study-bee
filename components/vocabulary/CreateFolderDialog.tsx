@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Plus } from "lucide-react";
+import { FolderPlus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,30 +17,25 @@ import {
   type VocabularyVisibility,
 } from "@/lib/vocabularyTree";
 
-interface CreateDeckDialogProps {
-  profileId?: string | null;
-  parentId?: string | null;
-  onCreated: () => void;
-}
-
-export function CreateDeckDialog({
+export function CreateFolderDialog({
   profileId,
-  parentId = null,
+  parentId,
   onCreated,
-}: CreateDeckDialogProps) {
+}: {
+  profileId?: string | null;
+  parentId: string | null;
+  onCreated: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [level, setLevel] = useState("");
-  const [category, setCategory] = useState("");
-  const [tags, setTags] = useState("");
   const [visibility, setVisibility] = useState<VocabularyVisibility>("private");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function handleCreate() {
     if (!title.trim()) {
-      setError("Vui lòng nhập tên bộ từ");
+      setError("Vui lòng nhập tên thư mục");
       return;
     }
     if (!profileId) {
@@ -56,21 +51,12 @@ export function CreateDeckDialog({
         parentId,
         title: title.trim(),
         description: description.trim() || null,
-        type: "deck",
+        type: "folder",
         visibility,
-        level: level.trim() || null,
-        category: category.trim() || null,
-        tags: tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
       });
 
       setTitle("");
       setDescription("");
-      setLevel("");
-      setCategory("");
-      setTags("");
       setVisibility("private");
       setOpen(false);
       onCreated();
@@ -86,52 +72,36 @@ export function CreateDeckDialog({
       <DialogTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-gray-900 px-5 text-sm font-bold text-yellow-300 shadow-lg shadow-gray-900/10 transition-colors hover:bg-gray-700"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-yellow-200 bg-white px-5 text-sm font-bold text-gray-800 shadow-sm shadow-yellow-100/60 transition-colors hover:bg-yellow-50"
         >
-          <Plus className="h-4 w-4" />
-          Tạo bộ từ
+          <Plus className="h-4 w-4 text-yellow-700" />
+          Tạo thư mục
         </button>
       </DialogTrigger>
 
-      <DialogContent className="max-h-[88vh] overflow-y-auto border border-yellow-100 bg-white p-0 shadow-2xl shadow-yellow-100/70 sm:max-w-lg">
+      <DialogContent className="overflow-hidden border border-yellow-100 bg-white p-0 shadow-2xl shadow-yellow-100/70 sm:max-w-md">
         <div className="bg-[#FFFBEB] px-5 py-5">
           <DialogHeader>
-            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
-              <BookOpen className="h-5 w-5" />
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-yellow-300 text-gray-900">
+              <FolderPlus className="h-5 w-5" />
             </div>
             <DialogTitle className="font-heading text-2xl font-bold text-gray-900">
-              Tạo bộ từ mới
+              Tạo thư mục mới
             </DialogTitle>
           </DialogHeader>
         </div>
 
         <div className="grid gap-4 px-5 py-4">
-          <Field label="Tên bộ từ">
+          <label className="grid gap-2 text-sm font-bold text-gray-700">
+            Tên thư mục
             <Input value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
-          </Field>
-          <Field label="Mô tả">
-            <Textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              rows={3}
-            />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Level">
-              <Input placeholder="VD: B1, IELTS 6.5" value={level} onChange={(event) => setLevel(event.target.value)} />
-            </Field>
-            <Field label="Category">
-              <Input placeholder="VD: Reading" value={category} onChange={(event) => setCategory(event.target.value)} />
-            </Field>
-          </div>
-          <Field label="Tags">
-            <Input
-              placeholder="academic, cambridge, passage 1"
-              value={tags}
-              onChange={(event) => setTags(event.target.value)}
-            />
-          </Field>
-          <Field label="Visibility">
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-gray-700">
+            Mô tả
+            <Textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-gray-700">
+            Visibility
             <select
               value={visibility}
               onChange={(event) => setVisibility(event.target.value as VocabularyVisibility)}
@@ -141,7 +111,7 @@ export function CreateDeckDialog({
               <option value="unlisted">Unlisted</option>
               <option value="public">Public</option>
             </select>
-          </Field>
+          </label>
 
           {error && (
             <p className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">
@@ -155,19 +125,10 @@ export function CreateDeckDialog({
             Hủy
           </Button>
           <Button onClick={handleCreate} disabled={loading} className="h-10 rounded-full bg-gray-900 px-5 font-bold text-yellow-300 hover:bg-gray-700">
-            {loading ? "Đang tạo..." : "Tạo bộ từ"}
+            {loading ? "Đang tạo..." : "Tạo thư mục"}
           </Button>
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="grid gap-2 text-sm font-bold text-gray-700">
-      {label}
-      {children}
-    </label>
   );
 }

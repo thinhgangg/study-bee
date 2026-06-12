@@ -13,10 +13,12 @@ import {
   ImageIcon,
   PlayCircle,
   Plus,
+  Search,
   Volume2,
 } from "lucide-react";
 import { StudyBeeNavbar } from "@/components/layout/StudyBeeNavbar";
 import { AddCardDialog } from "@/components/vocabulary/AddCardDialog";
+import { VocabularyBreadcrumb } from "@/components/vocabulary/VocabularyBreadcrumb";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
+import { fetchBreadcrumb, type VocabularyNode } from "@/lib/vocabularyTree";
 
 interface Deck {
   id: string;
@@ -35,6 +38,7 @@ interface Deck {
 }
 
 type VocabularyStatus = "learning" | "mastered" | "review";
+type CardFilter = "all" | VocabularyStatus;
 
 interface VocabularyCardData {
   id: string;
@@ -175,6 +179,7 @@ export default function DeckDetailPage({
 function VocabularyDeckPage({ deckId }: { deckId: string }) {
   const router = useRouter();
   const [deck, setDeck] = useState<Deck | null>(null);
+  const [breadcrumb, setBreadcrumb] = useState<VocabularyNode[]>([]);
   const [cards, setCards] = useState<VocabularyCardData[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [selectedVocabulary, setSelectedVocabulary] =
@@ -182,6 +187,8 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filter, setFilter] = useState<CardFilter>("all");
 
   const loadDeck = useCallback(async () => {
     setLoading(true);
@@ -221,10 +228,13 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
 
       if (!deckData) {
         setDeck(null);
+        setBreadcrumb([]);
         setCards([]);
         setNotFound(true);
         return;
       }
+
+      const deckBreadcrumb = await fetchBreadcrumb(deckId);
 
       const { data: cardData, error: cardsError } = await supabase
         .from("cards")
@@ -270,6 +280,7 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
       });
 
       setDeck(deckData as Deck);
+      setBreadcrumb(deckBreadcrumb);
       setCards(mergedCards);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra.");
@@ -292,6 +303,22 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
 
     return { total, mastered, due, studied, percent };
   }, [cards]);
+
+  const filteredCards = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
+
+    return cards.filter((card) => {
+      const matchesFilter = filter === "all" || card.status === filter;
+      const matchesSearch =
+        !keyword ||
+        card.word.toLowerCase().includes(keyword) ||
+        card.vietnamese_meaning?.toLowerCase().includes(keyword) ||
+        card.english_example?.toLowerCase().includes(keyword) ||
+        card.part_of_speech?.toLowerCase().includes(keyword);
+
+      return matchesFilter && matchesSearch;
+    });
+  }, [cards, filter, searchTerm]);
 
   const markAsMastered = useCallback(
     async (card: VocabularyCardData) => {
@@ -409,6 +436,10 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
 
         {deck && (
           <>
+            <div className="mb-4">
+              <VocabularyBreadcrumb items={breadcrumb} basePath="/vocabulary" />
+            </div>
+
             <DeckHeader
               deck={deck}
               deckId={deckId}
@@ -416,11 +447,30 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
               onCardCreated={loadDeck}
             />
 
+            <DeckToolbar
+              searchTerm={searchTerm}
+              filter={filter}
+              onSearchChange={setSearchTerm}
+              onFilterChange={setFilter}
+            />
+
             {cards.length === 0 ? (
               <EmptyDeckState deckId={deckId} onCardCreated={loadDeck} />
+            ) : filteredCards.length === 0 ? (
+              <section className="mt-6 rounded-3xl border border-yellow-100 bg-white px-6 py-14 text-center shadow-sm shadow-yellow-100/60">
+                <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-yellow-100 text-yellow-700">
+                  <Search className="h-7 w-7" />
+                </div>
+                <h2 className="font-heading text-xl font-bold text-gray-900">
+                  Không tìm thấy từ phù hợp
+                </h2>
+                <p className="mt-2 text-sm text-gray-500">
+                  Thử đổi từ khóa hoặc chọn lại bộ lọc Tất cả.
+                </p>
+              </section>
             ) : (
               <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {cards.map((card) => (
+                {filteredCards.map((card) => (
                   <VocabularyCard
                     key={card.id}
                     card={card}
@@ -464,10 +514,10 @@ function DeckHeader({
   onCardCreated: () => void | Promise<void>;
 }) {
   return (
-    <section className="rounded-3xl border border-yellow-100 bg-white p-5 shadow-sm shadow-yellow-100/50 lg:p-6">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+    <section className="rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm shadow-yellow-100/50 lg:p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-gray-500 sm:text-sm">
+          <div className="hidden">
             <Link href="/vocabulary" className="hover:text-yellow-700">
               Từ vựng
             </Link>
@@ -475,7 +525,7 @@ function DeckHeader({
             <span className="truncate text-gray-900">{deck.name}</span>
           </div>
 
-          <h1 className="font-heading text-3xl font-bold leading-tight text-gray-900 sm:text-4xl">
+          <h1 className="font-heading text-2xl font-bold leading-tight text-gray-900 sm:text-3xl">
             {deck.name}
           </h1>
           {deck.description && (
@@ -485,7 +535,7 @@ function DeckHeader({
           )}
         </div>
 
-        <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:pt-9">
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
           <Link
             href={`/vocabulary/${deckId}/study`}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-gray-900 px-5 text-sm font-bold text-yellow-300 shadow-lg shadow-gray-900/10 transition-colors hover:bg-gray-700"
@@ -510,8 +560,113 @@ function DeckHeader({
         </div>
       </div>
 
-      <ProgressSummary progress={progress} />
+      <CompactProgressSummary progress={progress} />
     </section>
+  );
+}
+
+function CompactProgressSummary({
+  progress,
+}: {
+  progress: {
+    total: number;
+    mastered: number;
+    due: number;
+    studied: number;
+    percent: number;
+  };
+}) {
+  return (
+    <div className="mt-4">
+      <div className="flex flex-wrap gap-2">
+        <StatChip label="thẻ" value={progress.total} tone="border-yellow-100 bg-yellow-50 text-yellow-700" />
+        <StatChip label="đã học" value={progress.studied} tone="border-sky-100 bg-sky-50 text-sky-700" />
+        <StatChip label="cần ôn" value={progress.due} tone="border-rose-100 bg-rose-50 text-rose-700" />
+        <StatChip label="đã thuộc" value={progress.mastered} tone="border-emerald-100 bg-emerald-50 text-emerald-700" />
+      </div>
+
+      <div className="mt-3 rounded-2xl border border-yellow-100 bg-yellow-50/60 px-3 py-2.5">
+        <div className="mb-2 flex items-center justify-between text-xs font-bold text-gray-500">
+          <span>Mức độ hoàn thành</span>
+          <span>{progress.percent}%</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-yellow-100">
+          <div
+            className="h-full rounded-full bg-yellow-400 transition-all duration-500"
+            style={{ width: `${progress.percent}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatChip({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: string;
+}) {
+  return (
+    <span className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-bold ${tone}`}>
+      <span>{value}</span>
+      <span>{label}</span>
+    </span>
+  );
+}
+
+function DeckToolbar({
+  searchTerm,
+  filter,
+  onSearchChange,
+  onFilterChange,
+}: {
+  searchTerm: string;
+  filter: CardFilter;
+  onSearchChange: (value: string) => void;
+  onFilterChange: (value: CardFilter) => void;
+}) {
+  const filters: Array<{ value: CardFilter; label: string }> = [
+    { value: "all", label: "Tất cả" },
+    { value: "learning", label: "Đang học" },
+    { value: "mastered", label: "Đã thuộc" },
+    { value: "review", label: "Cần ôn" },
+  ];
+
+  return (
+    <div className="mt-5 rounded-2xl border border-yellow-100 bg-white p-3 shadow-sm shadow-yellow-100/50">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            value={searchTerm}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Tìm từ trong bộ này..."
+            className="h-11 w-full rounded-full border border-gray-100 bg-[#FFFBEB] pl-11 pr-4 text-sm font-medium text-gray-900 outline-none transition focus:border-yellow-300 focus:bg-white focus:ring-4 focus:ring-yellow-300/20"
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {filters.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => onFilterChange(item.value)}
+              className={`h-9 rounded-full border px-3 text-xs font-bold transition-colors ${
+                filter === item.value
+                  ? "border-yellow-300 bg-yellow-300 text-gray-900 shadow-sm"
+                  : "border-gray-100 bg-white text-gray-500 hover:bg-yellow-50 hover:text-gray-900"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -621,19 +776,7 @@ function VocabularyCard({
         className="flex flex-1 cursor-pointer flex-col text-left"
       >
         <div className="flex gap-3.5">
-          <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-yellow-50 to-sky-50 sm:h-[88px] sm:w-[88px]">
-            {card.image_url ? (
-              <img
-                src={card.image_url}
-                alt={card.word}
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-yellow-600">
-                <ImageIcon className="h-8 w-8" />
-              </div>
-            )}
-          </div>
+          <VocabularyCardImage imageUrl={card.image_url} alt={card.word} />
 
           <div className="min-w-0 flex-1">
             <div className="mb-2 flex min-h-[24px] flex-wrap items-center gap-1.5">
@@ -694,7 +837,7 @@ function VocabularyCard({
           trigger={
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-full bg-yellow-100 px-3 py-1 text-xs font-bold text-yellow-700 transition-colors hover:bg-yellow-200"
+              className="inline-flex items-center gap-1.5 rounded-full bg-yellow-300 px-3 py-1.5 text-xs font-bold text-gray-900 shadow-sm shadow-yellow-100 transition-colors hover:bg-yellow-400"
             >
               Chỉnh sửa
               <Edit3 className="h-3.5 w-3.5" />
@@ -703,6 +846,34 @@ function VocabularyCard({
         />
       </div>
     </article>
+  );
+}
+
+function VocabularyCardImage({
+  imageUrl,
+  alt,
+}: {
+  imageUrl: string | null;
+  alt: string;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const shouldShowImage = Boolean(imageUrl) && !imageFailed;
+
+  return (
+    <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-yellow-50 to-sky-50 sm:h-[88px] sm:w-[88px]">
+      {shouldShowImage ? (
+        <img
+          src={imageUrl!}
+          alt={alt}
+          onError={() => setImageFailed(true)}
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-yellow-50 to-sky-50 text-yellow-600">
+          <ImageIcon className="h-8 w-8" />
+        </div>
+      )}
+    </div>
   );
 }
 

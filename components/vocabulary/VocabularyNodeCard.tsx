@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BookOpen,
@@ -34,6 +35,7 @@ export function VocabularyNodeCard({
   folderHref?: (node: VocabularyNode) => string;
 }) {
   const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
   const isFolder = node.type === "folder";
   const openHref = isFolder
     ? (folderHref?.(node) ?? `/vocabulary/folder/${node.id}`)
@@ -47,6 +49,10 @@ export function VocabularyNodeCard({
       : 0;
 
   function openNode() {
+    if (menuOpen) {
+      setMenuOpen(false);
+      return;
+    }
     router.push(openHref);
   }
 
@@ -61,7 +67,7 @@ export function VocabularyNodeCard({
           openNode();
         }
       }}
-      className="group flex min-h-[260px] cursor-pointer flex-col rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm shadow-yellow-100/60 transition-all duration-300 hover:-translate-y-1 hover:border-yellow-200 hover:shadow-xl hover:shadow-yellow-100/70 focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300/30"
+      className="group relative flex min-h-[260px] cursor-pointer flex-col rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm shadow-yellow-100/60 transition-all duration-300 hover:-translate-y-1 hover:border-yellow-200 hover:shadow-xl hover:shadow-yellow-100/70 focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300/30"
     >
       <div className="flex items-start justify-between gap-3">
         <div
@@ -84,34 +90,52 @@ export function VocabularyNodeCard({
           </span>
           {editable && (
             <div
-              className="relative"
+              className="relative z-30"
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
             >
               <button
                 type="button"
                 aria-label="Tùy chọn"
-                className="peer flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-yellow-50 hover:text-gray-900"
+                aria-expanded={menuOpen}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setMenuOpen((current) => !current);
+                }}
+                className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-yellow-50 hover:text-gray-900 aria-expanded:bg-yellow-50 aria-expanded:text-gray-900"
               >
                 <MoreHorizontal className="h-5 w-5" />
               </button>
-              <div className="invisible absolute right-0 top-9 z-20 w-44 rounded-2xl border border-yellow-100 bg-white p-1 opacity-0 shadow-xl shadow-yellow-100/70 transition peer-focus:visible peer-focus:opacity-100 hover:visible hover:opacity-100">
+              {menuOpen && (
+                <div className="absolute right-0 top-11 z-50 w-44 rounded-2xl border border-yellow-100 bg-white p-1 shadow-xl shadow-yellow-100/70">
                 <MenuButton
                   icon={Edit3}
                   label="Chỉnh sửa"
-                  onClick={() => onRename(node)}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onRename(node);
+                  }}
                 />
                 <MenuButton
                   icon={MoveRight}
                   label="Di chuyển"
-                  onClick={() => onMove(node)}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onMove(node);
+                  }}
                 />
                 <MenuButton
                   danger
                   icon={Trash2}
                   label="Xóa"
-                  onClick={() => onDelete(node)}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onDelete(node);
+                  }}
                 />
-              </div>
+                </div>
+              )}
             </div>
           )}
         </div>

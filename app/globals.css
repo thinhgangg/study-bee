@@ -126,6 +126,8 @@
   }
   html {
     @apply font-sans;
+    scroll-padding-top: 4rem;
+    scrollbar-gutter: stable;
   }
   h1,
   h2,

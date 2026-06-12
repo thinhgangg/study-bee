@@ -2,24 +2,19 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
-  Bell,
   BookOpenCheck,
   CheckCircle2,
-  ChevronDown,
-  GraduationCap,
-  LayoutDashboard,
-  LogOut,
   Mic2,
   PlayCircle,
   Star,
   Target,
   TrendingUp,
-  User,
   Volume2,
 } from "lucide-react";
+import { StudyBeeNavbar } from "@/components/layout/StudyBeeNavbar";
 import { StudyBeeLogo } from "@/components/StudyBeeLogo";
 import { supabase } from "@/lib/supabase";
 
@@ -185,10 +180,53 @@ const HoneycombBg = () => (
 // ─── Page ────────────────────────────────────────────────────
 
 export default function Home() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [loadingAuth, setLoadingAuth] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSession() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!mounted) return;
+
+      setEmail(session?.user.email ?? "");
+      setLoadingAuth(false);
+    }
+
+    loadSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setEmail(session?.user.email ?? "");
+      setLoadingAuth(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    router.refresh();
+  }
+
   return (
     <main className="min-h-screen bg-white font-body text-gray-900">
       {/* ── Navbar ─────────────────────────────────────────── */}
-      <HomeNavbar />
+      <StudyBeeNavbar
+        userEmail={email}
+        loadingAuth={loadingAuth}
+        showAuthActions
+        onSignOut={handleSignOut}
+      />
 
       {/* ── Hero — 2 column ────────────────────────────────── */}
       <section className="relative overflow-hidden bg-[#FFFBEB] pt-16">
@@ -548,175 +586,6 @@ export default function Home() {
     </main>
   );
 }
-
-function HomeNavbar() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [loadingAuth, setLoadingAuth] = useState(true);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const isLoggedIn = Boolean(email);
-  const initials = email.trim()[0]?.toUpperCase() || "B";
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadSession() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!mounted) return;
-
-      setEmail(session?.user.email ?? "");
-      setLoadingAuth(false);
-    }
-
-    loadSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setEmail(session?.user.email ?? "");
-      setLoadingAuth(false);
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-
-    function handlePointerDown(event: PointerEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [menuOpen]);
-
-  async function handleSignOut() {
-    await supabase.auth.signOut();
-    setMenuOpen(false);
-    router.refresh();
-  }
-
-  return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-gray-100 bg-white/95 backdrop-blur-sm">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 lg:px-8">
-        <StudyBeeLogo
-          imageClassName="h-8 w-8"
-          textClassName="font-heading text-xl font-bold text-gray-900"
-        />
-
-        <nav className="hidden items-center gap-1 text-sm text-gray-500 md:flex">
-          <Link
-            href="/vocabulary"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 transition-colors hover:bg-gray-50 hover:text-gray-900"
-          >
-            <BookOpenCheck className="h-4 w-4" /> Từ vựng
-          </Link>
-          <a
-            href="#features"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 transition-colors hover:bg-gray-50 hover:text-gray-900"
-          >
-            <Mic2 className="h-4 w-4" /> Luyện kỹ năng
-          </a>
-          <a
-            href="#features"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 transition-colors hover:bg-gray-50 hover:text-gray-900"
-          >
-            <Target className="h-4 w-4" /> Mock Test
-          </a>
-          <a
-            href="#features"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 transition-colors hover:bg-gray-50 hover:text-gray-900"
-          >
-            <LayoutDashboard className="h-4 w-4" /> Lộ trình
-          </a>
-          <a
-            href="#pricing"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 transition-colors hover:bg-gray-50 hover:text-gray-900"
-          >
-            <GraduationCap className="h-4 w-4" /> Bảng giá
-          </a>
-        </nav>
-
-        {loadingAuth ? (
-          <div className="h-10 w-36 animate-pulse rounded-full bg-gray-100" />
-        ) : isLoggedIn ? (
-          <div ref={menuRef} className="relative flex items-center gap-2">
-            <button
-              type="button"
-              aria-label="Thông báo"
-              className="relative flex h-10 w-10 items-center justify-center rounded-full border border-gray-100 bg-white text-gray-600 shadow-sm transition-colors hover:bg-yellow-50 hover:text-gray-900"
-            >
-              <Bell className="h-4 w-4" />
-              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-yellow-400" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setMenuOpen((open) => !open)}
-              className="flex items-center gap-2 rounded-full border border-yellow-100 bg-white py-1 pl-1 pr-2 shadow-sm transition-colors hover:bg-yellow-50"
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-yellow-400 text-sm font-bold text-gray-900">
-                {initials}
-              </span>
-              <span className="hidden max-w-36 truncate text-sm font-semibold text-gray-700 sm:block">
-                {email}
-              </span>
-              <ChevronDown className="h-4 w-4 text-gray-400" />
-            </button>
-
-            {menuOpen && (
-              <div className="absolute right-0 top-12 w-56 overflow-hidden rounded-2xl border border-yellow-100 bg-white p-2 shadow-xl shadow-yellow-100/70">
-                <Link
-                  href="/vocabulary"
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-yellow-50"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  <User className="h-4 w-4 text-yellow-600" />
-                  Hồ sơ học tập
-                </Link>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Đăng xuất
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Link
-              href="/login"
-              className="rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
-            >
-              Đăng nhập
-            </Link>
-            <Link
-              href="/register"
-              className="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-yellow-300 transition-colors hover:bg-gray-700"
-            >
-              Dùng thử miễn phí
-            </Link>
-          </div>
-        )}
-      </div>
-    </header>
-  );
-}
-
-// ─── App Mockup (right column hero) ─────────────────────────
 
 function AppMockup() {
   return (

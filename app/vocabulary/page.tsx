@@ -1,26 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Bell,
   BookOpen,
   BookOpenCheck,
-  ChevronDown,
   Clock3,
   Flame,
-  GraduationCap,
-  LayoutDashboard,
-  LogOut,
-  Mic2,
   Search,
-  Settings,
   Sparkles,
-  Target,
-  User,
 } from "lucide-react";
-import { StudyBeeLogo } from "@/components/StudyBeeLogo";
+import { StudyBeeNavbar } from "@/components/layout/StudyBeeNavbar";
 import { supabase } from "@/lib/supabase";
 import { DeckCard } from "@/components/vocabulary/DeckCard";
 import { CreateDeckDialog } from "@/components/vocabulary/CreateDeckDialog";
@@ -38,14 +29,6 @@ interface DeckStat {
 }
 
 type DeckFilter = "all" | "due" | "active";
-
-const navItems = [
-  { label: "Từ vựng", href: "/vocabulary", icon: BookOpenCheck, active: true },
-  { label: "Luyện kỹ năng", href: "/#features", icon: Mic2 },
-  { label: "Mock Test", href: "/#features", icon: Target },
-  { label: "Lộ trình", href: "/#features", icon: LayoutDashboard },
-  { label: "Bảng giá", href: "/#pricing", icon: GraduationCap },
-];
 
 function HoneycombPattern() {
   return (
@@ -92,114 +75,6 @@ function DeckSkeleton() {
         <Skeleton className="h-10 rounded-full bg-gray-100" />
       </div>
     </div>
-  );
-}
-
-function AppNavbar({
-  email,
-  onSignOut,
-}: {
-  email: string;
-  onSignOut: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const initials = email?.trim()?.[0]?.toUpperCase() || "B";
-
-  useEffect(() => {
-    if (!open) return;
-
-    function handlePointerDown(event: PointerEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [open]);
-
-  return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-yellow-100 bg-white/95 backdrop-blur-sm">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 lg:px-8">
-        <StudyBeeLogo
-          imageClassName="h-8 w-8"
-          textClassName="font-heading text-xl font-bold text-gray-900"
-        />
-
-        <nav className="hidden items-center gap-1 text-sm text-gray-500 lg:flex">
-          {navItems.map(({ label, href, icon: Icon, active }) => (
-            <Link
-              key={label}
-              href={href}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-2 transition-colors ${
-                active
-                  ? "bg-yellow-100 text-gray-900"
-                  : "hover:bg-gray-50 hover:text-gray-900"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            aria-label="Thông báo"
-            className="relative flex h-10 w-10 items-center justify-center rounded-full border border-yellow-100 bg-white text-gray-600 shadow-sm shadow-yellow-100/50 transition-colors hover:bg-yellow-50 hover:text-gray-900"
-          >
-            <Bell className="h-4 w-4" />
-            <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-yellow-400 ring-2 ring-white" />
-          </button>
-
-          <div ref={menuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setOpen((value) => !value)}
-              aria-expanded={open}
-              className="flex items-center gap-2 rounded-full border border-yellow-100 bg-white py-1 pl-1 pr-3 text-sm font-semibold text-gray-700 shadow-sm shadow-yellow-100/50 transition-colors hover:bg-yellow-50"
-            >
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-300 font-heading text-sm font-bold text-gray-900">
-                {initials}
-              </span>
-              <span className="hidden max-w-28 truncate sm:inline">
-                {email || "StudyBee"}
-              </span>
-              <ChevronDown className="h-4 w-4 text-gray-400" />
-            </button>
-
-            {open && (
-              <div className="absolute right-0 mt-3 w-56 overflow-hidden rounded-2xl border border-yellow-100 bg-white p-2 shadow-xl shadow-yellow-100/70">
-                <Link
-                  href="#"
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-yellow-50"
-                >
-                  <User className="h-4 w-4 text-yellow-600" />
-                  Hồ sơ
-                </Link>
-                <Link
-                  href="#"
-                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 hover:bg-yellow-50"
-                >
-                  <Settings className="h-4 w-4 text-yellow-600" />
-                  Cài đặt
-                </Link>
-                <button
-                  type="button"
-                  onClick={onSignOut}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-600 hover:bg-rose-50"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Đăng xuất
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </header>
   );
 }
 
@@ -316,7 +191,7 @@ export default function VocabularyPage() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#FFFBEB] font-body text-gray-900">
       <HoneycombPattern />
-      <AppNavbar email={email} onSignOut={handleSignOut} />
+      <StudyBeeNavbar userEmail={email} onSignOut={handleSignOut} />
 
       <section className="relative mx-auto max-w-7xl px-5 pb-16 pt-24 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:items-end">

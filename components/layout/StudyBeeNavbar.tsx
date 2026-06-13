@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   BookA,
+  BookOpenText,
   CheckCheck,
   ChevronDown,
   Clock3,
@@ -19,6 +20,9 @@ import {
   Route,
   CreditCard,
   Flame,
+  Headphones,
+  Mic2,
+  PenLine,
 } from "lucide-react";
 import { StudyBeeLogo } from "@/components/StudyBeeLogo";
 import { supabase } from "@/lib/supabase";
@@ -37,10 +41,16 @@ import {
 
 const navItems = [
   { label: "Từ vựng", href: "/vocabulary", icon: BookA },
-  { label: "Luyện kỹ năng", href: "/#features", icon: Dumbbell },
   { label: "Mock Test", href: "/#features", icon: ClipboardCheck },
   { label: "Lộ trình", href: "/#features", icon: Route },
   { label: "Bảng giá", href: "/#pricing", icon: CreditCard },
+];
+
+const skillItems = [
+  { label: "Reading", href: "/reading", icon: BookOpenText },
+  { label: "Listening", href: "/listening", icon: Headphones },
+  { label: "Writing", href: "/writing", icon: PenLine },
+  { label: "Speaking", href: "/speaking", icon: Mic2 },
 ];
 
 interface ReviewNotification {
@@ -74,6 +84,7 @@ export function StudyBeeNavbar({
 }: StudyBeeNavbarProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileSkillsOpen, setMobileSkillsOpen] = useState(false);
   const [notifications, setNotifications] = useState<ReviewNotification[]>([]);
   const [notificationSignature, setNotificationSignature] = useState("");
   const [notificationsRead, setNotificationsRead] = useState(true);
@@ -237,6 +248,7 @@ export function StudyBeeNavbar({
   async function handleSignOut() {
     await onSignOut?.();
     setMobileMenuOpen(false);
+    setMobileSkillsOpen(false);
   }
 
   async function markAllNotificationsRead() {
@@ -265,7 +277,7 @@ export function StudyBeeNavbar({
         </div>
 
         <nav className="hidden items-center gap-0.5 text-sm text-gray-500 md:flex lg:gap-1">
-          {navItems.map(({ label, href, icon: Icon }) => {
+          {navItems.slice(0, 1).map(({ label, href, icon: Icon }) => {
             const active =
               href === "/vocabulary" && pathname.startsWith("/vocabulary");
 
@@ -284,6 +296,19 @@ export function StudyBeeNavbar({
               </Link>
             );
           })}
+
+          <SkillsDropdown pathname={pathname} />
+
+          {navItems.slice(1).map(({ label, href, icon: Icon }) => (
+            <Link
+              key={label}
+              href={href}
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900 lg:px-3"
+            >
+              <Icon className="hidden h-4 w-4 lg:block" />
+              {label}
+            </Link>
+          ))}
         </nav>
 
         <div className="hidden md:block">
@@ -391,7 +416,7 @@ export function StudyBeeNavbar({
           {mobileMenuOpen && (
             <div className="absolute right-0 top-12 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-yellow-100 bg-white p-2.5 shadow-xl shadow-yellow-100/70">
               <nav className="space-y-1 text-sm font-semibold text-gray-700">
-                {navItems.map(({ label, href, icon: Icon }) => {
+                {navItems.slice(0, 1).map(({ label, href, icon: Icon }) => {
                   const active =
                     href === "/vocabulary" &&
                     pathname.startsWith("/vocabulary");
@@ -412,6 +437,60 @@ export function StudyBeeNavbar({
                     </Link>
                   );
                 })}
+
+                <button
+                  type="button"
+                  aria-expanded={mobileSkillsOpen}
+                  onClick={() => setMobileSkillsOpen((value) => !value)}
+                  className={`flex w-full min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                    skillItems.some(({ href }) => pathname.startsWith(href))
+                      ? "bg-yellow-100 text-gray-900"
+                      : "hover:bg-yellow-50 hover:text-gray-900"
+                  }`}
+                >
+                  <Dumbbell className="h-4 w-4 shrink-0 text-yellow-600" />
+                  <span className="flex-1 truncate">Luyện kỹ năng</span>
+                  <ChevronDown
+                    className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${
+                      mobileSkillsOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {mobileSkillsOpen && (
+                  <div className="ml-4 space-y-1 border-l border-yellow-100 pl-2">
+                    {skillItems.map(({ label, href, icon: Icon }) => (
+                      <Link
+                        key={label}
+                        href={href}
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          setMobileSkillsOpen(false);
+                        }}
+                        className={`flex items-center gap-2 rounded-xl px-3 py-2.5 transition-colors ${
+                          pathname.startsWith(href)
+                            ? "bg-yellow-100 text-gray-900"
+                            : "hover:bg-yellow-50 hover:text-gray-900"
+                        }`}
+                      >
+                        <Icon className="h-4 w-4 shrink-0 text-yellow-600" />
+                        {label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+
+                {navItems.slice(1).map(({ label, href, icon: Icon }) => (
+                  <Link
+                    key={label}
+                    href={href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 transition-colors hover:bg-yellow-50 hover:text-gray-900"
+                  >
+                    <Icon className="h-4 w-4 shrink-0 text-yellow-600" />
+                    <span className="truncate">{label}</span>
+                  </Link>
+                ))}
               </nav>
 
               <div className="mt-3 border-t border-yellow-100 pt-3">
@@ -450,6 +529,44 @@ export function StudyBeeNavbar({
         </div>
       </div>
     </header>
+  );
+}
+
+function SkillsDropdown({ pathname }: { pathname: string }) {
+  const active = skillItems.some(({ href }) => pathname.startsWith(href));
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={`group flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 outline-none transition-colors lg:px-3 ${
+            active
+              ? "bg-yellow-100 text-gray-900"
+              : "text-gray-500 hover:bg-gray-50 hover:text-gray-900 data-[state=open]:bg-gray-50 data-[state=open]:text-gray-900"
+          }`}
+        >
+          <Dumbbell className="hidden h-4 w-4 lg:block" />
+          Luyện kỹ năng
+          <ChevronDown className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-180" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-52">
+        {skillItems.map(({ label, href, icon: Icon }) => (
+          <DropdownMenuItem key={label} asChild>
+            <Link
+              href={href}
+              className={
+                pathname.startsWith(href) ? "bg-yellow-50 text-gray-900" : ""
+              }
+            >
+              <Icon className="text-yellow-600" />
+              {label}
+            </Link>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

@@ -559,7 +559,7 @@ export default function Home() {
 
 function AppMockup() {
   return (
-    <div className="w-full rounded-3xl border border-yellow-100 bg-white overflow-hidden shadow-xl shadow-yellow-100/60">
+    <div className="w-full select-none rounded-3xl border border-yellow-100 bg-white overflow-hidden shadow-xl shadow-yellow-100/60">
       {/* Deck header */}
       <div className="px-5 pt-5 pb-3">
         <div className="flex items-center justify-between mb-1">

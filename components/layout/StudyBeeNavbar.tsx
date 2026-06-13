@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   BookA,
@@ -18,9 +18,15 @@ import {
   ClipboardCheck,
   Route,
   CreditCard,
+  Flame,
 } from "lucide-react";
 import { StudyBeeLogo } from "@/components/StudyBeeLogo";
 import { supabase } from "@/lib/supabase";
+import {
+  fetchStudyStreak,
+  type StudyActivity,
+  type StudyStreak,
+} from "@/lib/studyStreak";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,6 +56,16 @@ interface StudyBeeNavbarProps {
   onSignOut?: () => void | Promise<void>;
 }
 
+const EMPTY_STREAK: StudyStreak = {
+  current: 0,
+  longest: 0,
+  studiedToday: false,
+  activity: [],
+  todayReviewed: 0,
+  todayGoal: 0,
+  todayProgress: 0,
+};
+
 export function StudyBeeNavbar({
   userEmail = "",
   loadingAuth = false,
@@ -62,6 +78,7 @@ export function StudyBeeNavbar({
   const [notificationSignature, setNotificationSignature] = useState("");
   const [notificationsRead, setNotificationsRead] = useState(true);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [studyStreak, setStudyStreak] = useState<StudyStreak>(EMPTY_STREAK);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const isLoggedIn = Boolean(userEmail);
   const initials = userEmail.trim()[0]?.toUpperCase() || "B";
@@ -93,6 +110,13 @@ export function StudyBeeNavbar({
           .maybeSingle();
 
         if (!profile || cancelled) return;
+
+        try {
+          const streak = await fetchStudyStreak(profile.id as string);
+          if (!cancelled) setStudyStreak(streak);
+        } catch {
+          if (!cancelled) setStudyStreak(EMPTY_STREAK);
+        }
 
         const now = new Date().toISOString();
         const { data: reviews, error: reviewsError } = await supabase
@@ -267,81 +291,16 @@ export function StudyBeeNavbar({
             <div className="h-10 w-36 animate-pulse rounded-full bg-gray-100" />
           ) : isLoggedIn ? (
             <div className="flex items-center gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="Thông báo"
-                    className="relative flex h-10 w-10 items-center justify-center rounded-full border border-yellow-100 bg-white text-gray-600 shadow-sm shadow-yellow-100/50 transition-colors hover:bg-yellow-50 hover:text-gray-900"
-                  >
-                    <Bell className="h-4 w-4" />
-                    {hasUnreadNotifications && (
-                      <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-yellow-400 ring-2 ring-white" />
-                    )}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80 p-0">
-                  <div className="flex items-center justify-between border-b border-yellow-100 px-4 py-3">
-                    <div>
-                      <p className="font-bold text-gray-900">Thông báo</p>
-                      <p className="text-xs text-gray-500">
-                        {totalDueCount > 0
-                          ? `${totalDueCount} từ cần ôn hôm nay`
-                          : "Bạn đã hoàn thành lịch ôn"}
-                      </p>
-                    </div>
-                    {totalDueCount > 0 && !notificationsRead && (
-                      <button
-                        type="button"
-                        onClick={() => void markAllNotificationsRead()}
-                        className="text-xs font-bold text-yellow-700 hover:text-yellow-800"
-                      >
-                        Đọc tất cả
-                      </button>
-                    )}
-                  </div>
+              <StreakDropdown streak={studyStreak} />
 
-                  <div className="max-h-80 overflow-y-auto p-2">
-                    {loadingNotifications ? (
-                      <div className="space-y-2 p-2">
-                        <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
-                        <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
-                      </div>
-                    ) : notifications.length > 0 ? (
-                      notifications.map((notification) => (
-                        <DropdownMenuItem key={notification.deckId} asChild>
-                          <Link
-                            href={`/vocabulary/${notification.deckId}/study`}
-                            className="flex cursor-pointer items-start gap-3 rounded-xl px-3 py-3"
-                          >
-                            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-yellow-100 text-yellow-700">
-                              <Clock3 className="h-4 w-4" />
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block truncate font-bold text-gray-900">
-                                {notification.deckName}
-                              </span>
-                              <span className="block text-xs text-gray-500">
-                                Có {notification.dueCount} từ cần ôn hôm nay
-                              </span>
-                            </span>
-                          </Link>
-                        </DropdownMenuItem>
-                      ))
-                    ) : (
-                      <div className="px-4 py-8 text-center">
-                        <CheckCheck className="mx-auto h-8 w-8 text-emerald-500" />
-                        <p className="mt-2 text-sm font-bold text-gray-900">
-                          Không có thông báo mới
-                        </p>
-                        <p className="mt-1 text-xs text-gray-500">
-                          Hiện chưa có từ nào đến hạn ôn.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <NotificationDropdown
+                notifications={notifications}
+                totalDueCount={totalDueCount}
+                hasUnreadNotifications={hasUnreadNotifications}
+                notificationsRead={notificationsRead}
+                loading={loadingNotifications}
+                onMarkAllRead={markAllNotificationsRead}
+              />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -398,7 +357,23 @@ export function StudyBeeNavbar({
           )}
         </div>
 
-        <div ref={mobileMenuRef} className="relative flex shrink-0 md:hidden">
+        <div
+          ref={mobileMenuRef}
+          className="relative flex shrink-0 items-center gap-2 md:hidden"
+        >
+          {isLoggedIn && !loadingAuth && (
+            <>
+              <StreakDropdown streak={studyStreak} />
+              <NotificationDropdown
+                notifications={notifications}
+                totalDueCount={totalDueCount}
+                hasUnreadNotifications={hasUnreadNotifications}
+                notificationsRead={notificationsRead}
+                loading={loadingNotifications}
+                onMarkAllRead={markAllNotificationsRead}
+              />
+            </>
+          )}
           <button
             type="button"
             aria-label={mobileMenuOpen ? "Đóng menu" : "Mở menu"}
@@ -476,4 +451,307 @@ export function StudyBeeNavbar({
       </div>
     </header>
   );
+}
+
+function NotificationDropdown({
+  notifications,
+  totalDueCount,
+  hasUnreadNotifications,
+  notificationsRead,
+  loading,
+  onMarkAllRead,
+}: {
+  notifications: ReviewNotification[];
+  totalDueCount: number;
+  hasUnreadNotifications: boolean;
+  notificationsRead: boolean;
+  loading: boolean;
+  onMarkAllRead: () => void | Promise<void>;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Thông báo"
+          className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-yellow-100 bg-white text-gray-600 shadow-sm shadow-yellow-100/50 transition-colors hover:bg-yellow-50 hover:text-gray-900"
+        >
+          <Bell className="h-4 w-4" />
+          {hasUnreadNotifications && (
+            <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-yellow-400 ring-2 ring-white" />
+          )}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-80 max-w-[calc(100vw-2rem)] p-0"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-yellow-100 px-4 py-3">
+          <div>
+            <p className="font-bold text-gray-900">Thông báo</p>
+            <p className="text-xs text-gray-500">
+              {totalDueCount > 0
+                ? `${totalDueCount} từ cần ôn hôm nay`
+                : "Bạn đã hoàn thành lịch ôn"}
+            </p>
+          </div>
+          {totalDueCount > 0 && !notificationsRead && (
+            <button
+              type="button"
+              onClick={() => void onMarkAllRead()}
+              className="text-xs font-bold text-yellow-700 hover:text-yellow-800"
+            >
+              Đọc tất cả
+            </button>
+          )}
+        </div>
+
+        <div className="max-h-80 overflow-y-auto p-2">
+          {loading ? (
+            <div className="space-y-2 p-2">
+              <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
+              <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
+            </div>
+          ) : notifications.length > 0 ? (
+            notifications.map((notification) => (
+              <DropdownMenuItem key={notification.deckId} asChild>
+                <Link
+                  href={`/vocabulary/${notification.deckId}`}
+                  className="flex cursor-pointer items-start gap-3 rounded-xl px-3 py-3"
+                >
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-yellow-100 text-yellow-700">
+                    <Clock3 className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-bold text-gray-900">
+                      {notification.deckName}
+                    </span>
+                    <span className="block text-xs text-gray-500">
+                      Có {notification.dueCount} từ cần ôn hôm nay
+                    </span>
+                  </span>
+                </Link>
+              </DropdownMenuItem>
+            ))
+          ) : (
+            <div className="px-4 py-8 text-center">
+              <CheckCheck className="mx-auto h-8 w-8 text-emerald-500" />
+              <p className="mt-2 text-sm font-bold text-gray-900">
+                Không có thông báo mới
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                Hiện chưa có từ nào đến hạn ôn.
+              </p>
+            </div>
+          )}
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function StreakDropdown({
+  streak,
+}: {
+  streak: StudyStreak;
+}) {
+  const heatmapDays = useMemo(
+    () => buildHeatmapDays(streak.activity),
+    [streak.activity],
+  );
+  const recentReviewedCount = heatmapDays.reduce(
+    (total, day) => total + day.reviewedCount,
+    0,
+  );
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Streak ${streak.current} ngày`}
+          className="flex h-10 items-center justify-center gap-1.5 rounded-full border border-orange-100 bg-orange-50 px-3 text-sm font-bold text-orange-700 outline-none transition-colors hover:bg-orange-100 data-[state=open]:bg-orange-100"
+        >
+          <Flame className="h-4 w-4 fill-orange-400 text-orange-500" />
+          <span>{streak.current}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-[360px] max-w-[calc(100vw-2rem)] p-0"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-orange-100 bg-orange-50/70 px-4 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-orange-100">
+                <Flame className="h-6 w-6 fill-orange-400 text-orange-500" />
+              </span>
+              <div>
+                <p className="font-heading text-xl font-bold text-gray-900">
+                  {streak.current} ngày liên tiếp
+                </p>
+                <p className="text-xs text-gray-500">
+                  {streak.studiedToday
+                    ? "Đã hoàn thành mục tiêu hôm nay"
+                    : "Hoàn thành lịch ôn để giữ streak"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <StreakStat label="Kỷ lục" value={`${streak.longest} ngày`} />
+            <StreakStat label="12 tuần qua" value={`${recentReviewedCount} từ`} />
+          </div>
+
+          <div className="mt-3 rounded-xl border border-orange-100 bg-white px-3 py-3">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="font-bold text-gray-700">Mục tiêu hôm nay</span>
+              <span className="font-bold text-orange-700">
+                {streak.todayGoal > 0
+                  ? `${streak.todayReviewed}/${streak.todayGoal} từ`
+                  : streak.studiedToday
+                    ? "Đã hoàn thành"
+                    : "Không có từ cần ôn"}
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-orange-100">
+              <div
+                className="h-full rounded-full bg-orange-400 transition-[width] duration-300"
+                style={{ width: `${streak.todayProgress}%` }}
+              />
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500">
+              {streak.studiedToday
+                ? "Bạn đã giữ streak hôm nay."
+                : streak.todayGoal > 0
+                  ? `Còn ${Math.max(streak.todayGoal - streak.todayReviewed, 0)} từ để giữ streak.`
+                  : "Học một từ mới để giữ streak hôm nay."}
+            </p>
+          </div>
+        </div>
+
+        <div className="px-4 py-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-bold text-gray-900">Cường độ học tập</p>
+            <p className="text-[11px] text-gray-400">12 tuần gần nhất</p>
+          </div>
+
+          <div className="flex gap-2">
+            <div className="grid grid-rows-7 place-items-center gap-1 pt-px text-center text-[9px] leading-3 text-gray-400">
+              <span />
+              <span>T2</span>
+              <span />
+              <span>T4</span>
+              <span />
+              <span>T6</span>
+              <span />
+            </div>
+            <div className="grid flex-1 grid-flow-col grid-rows-7 gap-1">
+              {heatmapDays.map((day) => (
+                <span
+                  key={day.date}
+                  title={formatActivityTitle(day)}
+                  aria-label={formatActivityTitle(day)}
+                  className={`aspect-square min-w-0 rounded-[3px] ${getActivityColor(day.reviewedCount)} ${
+                    day.goalCompleted
+                      ? "ring-1 ring-inset ring-emerald-500"
+                      : ""
+                  } ${day.future ? "opacity-30" : ""}`}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center justify-end gap-1.5 text-[10px] text-gray-400">
+            <span>Ít</span>
+            {[0, 3, 10, 20, 31].map((count) => (
+              <span
+                key={count}
+                className={`h-3 w-3 rounded-[3px] ${getActivityColor(count)}`}
+              />
+            ))}
+            <span>Nhiều</span>
+          </div>
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function StreakStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-orange-100 bg-white px-3 py-2">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
+        {label}
+      </p>
+      <p className="mt-0.5 text-sm font-bold text-gray-900">{value}</p>
+    </div>
+  );
+}
+
+interface HeatmapDay {
+  date: string;
+  reviewedCount: number;
+  goalCompleted: boolean;
+  future: boolean;
+}
+
+function buildHeatmapDays(activity: StudyActivity[]): HeatmapDay[] {
+  const activityByDate = new Map(
+    activity.map((item) => [item.activityDate, item]),
+  );
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const end = new Date(today);
+  end.setDate(end.getDate() + (6 - end.getDay()));
+  const start = new Date(end);
+  start.setDate(start.getDate() - 83);
+
+  return Array.from({ length: 84 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const dateKey = getDateKey(date);
+    const item = activityByDate.get(dateKey);
+
+    return {
+      date: dateKey,
+      reviewedCount: item?.reviewedCount ?? 0,
+      goalCompleted: item?.goalCompleted ?? false,
+      future: date > today,
+    };
+  });
+}
+
+function getDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getActivityColor(reviewedCount: number) {
+  if (reviewedCount <= 0) return "bg-gray-100";
+  if (reviewedCount <= 5) return "bg-yellow-100";
+  if (reviewedCount <= 15) return "bg-yellow-300";
+  if (reviewedCount <= 30) return "bg-amber-400";
+  return "bg-amber-600";
+}
+
+function formatActivityTitle(day: HeatmapDay) {
+  const formattedDate = new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(`${day.date}T12:00:00`));
+
+  if (day.future) return formattedDate;
+  if (day.reviewedCount === 0) return `${formattedDate}: Không có hoạt động`;
+
+  return `${formattedDate}: Đã ôn ${day.reviewedCount} từ · ${
+    day.goalCompleted ? "Đã hoàn thành mục tiêu" : "Chưa hoàn thành lịch ôn"
+  }`;
 }

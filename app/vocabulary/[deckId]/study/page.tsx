@@ -10,6 +10,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
+  Flame,
   HelpCircle,
   ImageIcon,
   RotateCcw,
@@ -34,6 +35,12 @@ import {
   calculateReviewSchedule,
   isCardDue,
 } from "@/lib/spacedRepetition";
+import {
+  fetchStudyStreak,
+  initializeStudyDay,
+  recordStudyReview,
+  type StudyStreak,
+} from "@/lib/studyStreak";
 import { fetchNode } from "@/lib/vocabularyTree";
 
 interface Deck {
@@ -169,10 +176,19 @@ export default function StudyPage({
   const [reviewResults, setReviewResults] = useState<ReviewResults>({});
   const [sessionDuration, setSessionDuration] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [savingReview, setSavingReview] = useState(false);
+  const [studyStreak, setStudyStreak] = useState<StudyStreak>({
+    current: 0,
+    longest: 0,
+    studiedToday: false,
+    activity: [],
+    todayReviewed: 0,
+    todayGoal: 0,
+    todayProgress: 0,
+  });
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState("");
   const sessionStartedAt = useRef(0);
+  const pendingReviewIds = useRef(new Set<string>());
 
   const currentCard = cards[currentIndex];
   const reviewedPercent =
@@ -215,6 +231,24 @@ export default function StudyPage({
 
       if (profileError || !profileData) {
         throw new Error("Không tìm thấy hồ sơ người dùng.");
+      }
+
+      try {
+        setStudyStreak(await initializeStudyDay(profileData.id));
+      } catch {
+        try {
+          setStudyStreak(await fetchStudyStreak(profileData.id));
+        } catch {
+          setStudyStreak({
+            current: 0,
+            longest: 0,
+            studiedToday: false,
+            activity: [],
+            todayReviewed: 0,
+            todayGoal: 0,
+            todayProgress: 0,
+          });
+        }
       }
 
       const node = await fetchNode(deckId);
@@ -402,64 +436,84 @@ export default function StudyPage({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [flipCard, goNext, goPrevious, shuffleCards]);
 
-  async function handleReview(quality: number) {
-    if (!profile || !currentCard || savingReview) return;
+  function handleReview(quality: number) {
+    if (!profile || !currentCard) return;
+    if (pendingReviewIds.current.has(currentCard.id)) return;
 
-    setSavingReview(true);
+    const reviewedCard = currentCard;
+    const currentProfile = profile;
+    pendingReviewIds.current.add(reviewedCard.id);
     setError("");
+    setReviewedIds((current) => new Set(current).add(reviewedCard.id));
+    setReviewResults((current) => ({
+      ...current,
+      [reviewedCard.id]: quality,
+    }));
+    goNext();
 
-    try {
-      const now = new Date();
+    void (async () => {
+      try {
+        const now = new Date();
 
-      const { data: existingReview, error: existingError } = await supabase
-        .from("card_reviews")
-        .select("id, repetition, interval_days, ease_factor")
-        .eq("user_id", profile.id)
-        .eq("card_id", currentCard.id)
-        .maybeSingle();
+        const { data: existingReview, error: existingError } = await supabase
+          .from("card_reviews")
+          .select("id, repetition, interval_days, ease_factor")
+          .eq("user_id", currentProfile.id)
+          .eq("card_id", reviewedCard.id)
+          .maybeSingle();
 
-      if (existingError) throw existingError;
+        if (existingError) throw existingError;
 
-      const schedule = calculateReviewSchedule(
-        quality,
-        {
-          repetition: existingReview?.repetition ?? 0,
-          intervalDays: existingReview?.interval_days ?? 0,
-          easeFactor: existingReview?.ease_factor ?? 2.5,
-        },
-        now,
-      );
+        const schedule = calculateReviewSchedule(
+          quality,
+          {
+            repetition: existingReview?.repetition ?? 0,
+            intervalDays: existingReview?.interval_days ?? 0,
+            easeFactor: existingReview?.ease_factor ?? 2.5,
+          },
+          now,
+        );
 
-      const reviewPayload = {
-        user_id: profile.id,
-        card_id: currentCard.id,
-        quality,
-        interval_days: schedule.intervalDays,
-        ease_factor: schedule.easeFactor,
-        next_review_at: schedule.nextReviewAt.toISOString(),
-        reviewed_at: now.toISOString(),
-        repetition: schedule.repetition,
-      };
+        const reviewPayload = {
+          user_id: currentProfile.id,
+          card_id: reviewedCard.id,
+          quality,
+          interval_days: schedule.intervalDays,
+          ease_factor: schedule.easeFactor,
+          next_review_at: schedule.nextReviewAt.toISOString(),
+          reviewed_at: now.toISOString(),
+          repetition: schedule.repetition,
+        };
 
-      const { error: upsertError } = await supabase
-        .from("card_reviews")
-        .upsert(reviewPayload, { onConflict: "user_id,card_id" });
+        const { error: upsertError } = await supabase
+          .from("card_reviews")
+          .upsert(reviewPayload, { onConflict: "user_id,card_id" });
 
-      if (upsertError) throw upsertError;
+        if (upsertError) throw upsertError;
 
-      setReviewedIds((current) => new Set(current).add(currentCard.id));
-      setReviewResults((current) => ({
-        ...current,
-        [currentCard.id]: quality,
-      }));
-      goNext();
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "Không thể lưu đánh giá từ vựng.",
-      );
-    } finally {
-      setSavingReview(false);
-    }
+        try {
+          setStudyStreak(await recordStudyReview(currentProfile.id));
+        } catch {
+          // Review vẫn được lưu nếu migration streak chưa được chạy.
+        }
+      } catch (err: unknown) {
+        setReviewedIds((current) => {
+          const next = new Set(current);
+          next.delete(reviewedCard.id);
+          return next;
+        });
+        setReviewResults((current) => {
+          const next = { ...current };
+          delete next[reviewedCard.id];
+          return next;
+        });
+        setError(
+          err instanceof Error ? err.message : "Không thể lưu đánh giá từ vựng.",
+        );
+      } finally {
+        pendingReviewIds.current.delete(reviewedCard.id);
+      }
+    })();
   }
 
   function restartSession() {
@@ -579,6 +633,7 @@ export default function StudyPage({
           cards={cards}
           reviewResults={reviewResults}
           sessionDuration={sessionDuration}
+          studyStreak={studyStreak}
           backHref={backHref}
           onRestart={restartSession}
           onReviewDifficult={reviewDifficultCards}
@@ -689,7 +744,7 @@ export default function StudyPage({
               <Button
                 key={option.quality}
                 variant="outline"
-                disabled={!flipped || savingReview}
+                disabled={!flipped}
                 onClick={() => handleReview(option.quality)}
                 className={`h-11 rounded-2xl font-bold shadow-sm transition disabled:opacity-60 ${option.className}`}
               >
@@ -743,6 +798,7 @@ function StudySummary({
   cards,
   reviewResults,
   sessionDuration,
+  studyStreak,
   backHref,
   onRestart,
   onReviewDifficult,
@@ -751,6 +807,7 @@ function StudySummary({
   cards: StudyCard[];
   reviewResults: ReviewResults;
   sessionDuration: number;
+  studyStreak: StudyStreak;
   backHref: string;
   onRestart: () => void;
   onReviewDifficult: () => void;
@@ -818,6 +875,12 @@ function StudySummary({
             &ldquo;{deck.name}&rdquo;
           </span>
         </p>
+        {studyStreak.studiedToday && (
+          <div className="mx-auto mt-5 flex w-fit items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-4 py-2 text-sm font-bold text-orange-700">
+            <Flame className="h-4 w-4 fill-orange-400 text-orange-500" />
+            Streak {studyStreak.current} ngày đã được giữ hôm nay
+          </div>
+        )}
       </section>
 
       {/* 2. CORE STATS BAR */}

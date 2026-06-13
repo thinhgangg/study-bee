@@ -201,7 +201,7 @@ export function ReadingListPage() {
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
                   placeholder="Tìm bài đọc hoặc chủ đề..."
-                  className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 pl-11 pr-4 text-sm outline-none transition focus:border-yellow-300 focus:bg-white focus:ring-4 focus:ring-yellow-300/20"
+                  className="h-11 w-full rounded-full border border-gray-100 bg-[#FFFBEB] pl-11 pr-4 text-sm font-medium text-gray-900 outline-none transition focus:border-yellow-300 focus:bg-white focus:ring-4 focus:ring-yellow-300/20"
                 />
               </label>
 
@@ -257,7 +257,7 @@ export function ReadingListPage() {
 function FilterSelect({ children, ...props }: React.ComponentProps<typeof Select>) {
   return (
     <Select {...props}>
-      <SelectTrigger className="h-11 w-full rounded-xl border-gray-200 bg-gray-50 px-3 focus:ring-yellow-300/20">
+      <SelectTrigger className="h-11 w-full rounded-full border-gray-100 bg-[#FFFBEB] px-4 focus:ring-yellow-300/20 text-sm font-medium text-gray-900">
         <div className="flex min-w-0 items-center gap-2">
           <Filter className="h-4 w-4 shrink-0 text-yellow-600" />
           <SelectValue />
@@ -273,7 +273,7 @@ function ReadingCard({ item }: { item: ReadingPracticeListItem }) {
   const href = isFullTest ? `/reading/test/${item.slug}` : `/reading/${item.slug}`;
 
   return (
-    <article className="group flex min-h-64 flex-col rounded-3xl border border-yellow-100 bg-white p-5 shadow-sm shadow-yellow-100/50 transition hover:-translate-y-0.5 hover:border-yellow-300 hover:shadow-lg hover:shadow-yellow-100/70">
+    <article className="group flex min-h-[300px] flex-col rounded-3xl border border-yellow-100 bg-white p-5 shadow-sm shadow-yellow-100/50 transition hover:-translate-y-0.5 hover:border-yellow-300 hover:shadow-lg hover:shadow-yellow-100/70">
       <div className="flex items-start justify-between gap-3">
         <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${isFullTest ? "bg-gray-900 text-yellow-300" : "bg-yellow-100 text-yellow-800"}`}>
           {isFullTest ? <Layers3 className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
@@ -284,8 +284,12 @@ function ReadingCard({ item }: { item: ReadingPracticeListItem }) {
 
       <div className="mt-5 flex-1">
         <p className="text-xs font-bold uppercase tracking-wider text-yellow-700">{item.topic}</p>
-        <h2 className="mt-2 font-heading text-xl font-bold leading-snug text-gray-900">{item.title}</h2>
-        {item.description && <p className="mt-2 line-clamp-2 text-sm leading-6 text-gray-500">{item.description}</p>}
+        <h2 className="mt-2 font-heading text-xl font-bold leading-snug text-gray-900 line-clamp-2">{item.title}</h2>
+        {item.description ? (
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-gray-500">{item.description}</p>
+        ) : (
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-gray-400/0 select-none">No description provided for this IELTS practice set.</p>
+        )}
       </div>
 
       <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 border-t border-gray-100 pt-4 text-xs font-semibold text-gray-500">

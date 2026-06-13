@@ -24,17 +24,32 @@ import {
   Trash2,
   Volume2,
   X,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  XCircle,
+  HelpCircle,
+  Sparkles,
+  RotateCcw,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import { StudyBeeNavbar } from "@/components/layout/StudyBeeNavbar";
 import { HoneycombPattern } from "@/components/ui/honeycomb-pattern";
+import { ReadingResultSummary } from "./ReadingResultSummary";
 import {
   getReadingPassage,
   startReadingAttempt,
   submitReadingAttempt,
+  getReadingAttemptResult,
 } from "@/lib/reading";
 import type {
   ReadingPassageDetail,
   ReadingQuestionWithOptions,
+  ReadingAttemptResult,
+  UserReadingAnswer,
+  ReadingQuestionAnswer,
+  ReadingPassageSection,
 } from "@/lib/reading.types";
 import { supabase } from "@/lib/supabase";
 
@@ -147,6 +162,31 @@ export function ReadingPracticePage({ slug }: { slug: string }) {
     correct: number;
     total: number;
   } | null>(null);
+  const [viewMode, setViewMode] = useState<"practice" | "summary" | "review">("practice");
+  const [attemptResult, setAttemptResult] = useState<ReadingAttemptResult | null>(null);
+  const [selectedQuestionIdForReview, setSelectedQuestionIdForReview] = useState<string | null>(null);
+  const [filterIncorrectOnly, setFilterIncorrectOnly] = useState(false);
+  const [highlightedSectionId, setHighlightedSectionId] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<"passage" | "questions">("passage");
+
+  const userAnswersMap = useMemo(() => {
+    if (!attemptResult) return new Map<string, any>();
+    const map = new Map<string, any>();
+    attemptResult.user_reading_answers.forEach((ans) => {
+      map.set(ans.question_id, ans);
+    });
+    return map;
+  }, [attemptResult]);
+
+  const totalQuestions = passage?.reading_questions.length ?? 0;
+  const correctCount = result?.correct ?? 0;
+  const skippedCount = useMemo(() => {
+    if (!attemptResult) return 0;
+    return attemptResult.user_reading_answers.filter(
+      (ans) => !ans.user_answer || ans.user_answer.trim() === ""
+    ).length;
+  }, [attemptResult]);
+  const incorrectCount = totalQuestions - correctCount - skippedCount;
   const notes = useMemo(
     () => annotations.filter((annotation) => annotation.type === "note"),
     [annotations],
@@ -481,8 +521,8 @@ export function ReadingPracticePage({ slug }: { slug: string }) {
       router.push(`/login?next=/reading/${slug}`);
       return;
     }
-    if (Object.keys(answers).length !== passage.reading_questions.length)
-      return;
+    // Allow submission if at least one question is answered
+    if (Object.keys(answers).length === 0) return;
 
     setSubmitting(true);
     try {
@@ -493,17 +533,55 @@ export function ReadingPracticePage({ slug }: { slug: string }) {
         currentAttemptId,
         passage.reading_questions.map((question) => ({
           questionId: question.id,
-          answer: answers[question.id],
+          answer: answers[question.id] || "",
         })),
       );
+
+      // Fetch the full detailed attempt result
+      const detailedResult = await getReadingAttemptResult(currentAttemptId);
+      setAttemptResult(detailedResult);
+
       setResult({
         correct: attempt.correct_count,
         total: attempt.total_questions,
       });
+      setViewMode("summary");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Không thể nộp bài.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function handleTryAgain() {
+    setAnswers({});
+    setAttemptId(null);
+    setResult(null);
+    setAttemptResult(null);
+    setViewMode("practice");
+    setSelectedQuestionIdForReview(null);
+    setHighlightedSectionId(null);
+  }
+
+  function handleLocateEvidence(explanation: string | null) {
+    if (!passage) return;
+    const sectionId = findEvidenceSection(explanation, passage.reading_passage_sections);
+    if (sectionId) {
+      setHighlightedSectionId(sectionId);
+      // Auto-switch to passage tab on mobile
+      setMobileTab("passage");
+
+      window.setTimeout(() => {
+        const sectionEl = passageRef.current?.querySelector(`[data-section-id="${sectionId}"]`);
+        if (sectionEl) {
+          sectionEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 50);
+
+      // Pulse highlight effect for 4 seconds
+      window.setTimeout(() => {
+        setHighlightedSectionId((curr) => curr === sectionId ? null : curr);
+      }, 4000);
     }
   }
 
@@ -531,6 +609,17 @@ export function ReadingPracticePage({ slug }: { slug: string }) {
     );
   }
 
+  if (viewMode === "summary" && attemptResult) {
+    return (
+      <ReadingResultSummary
+        result={attemptResult}
+        passage={passage}
+        onReview={() => setViewMode("review")}
+        onTryAgain={handleTryAgain}
+      />
+    );
+  }
+
   return (
     <main className="relative h-screen overflow-hidden bg-[#FFFBEB] text-gray-900">
       <HoneycombPattern />
@@ -547,13 +636,19 @@ export function ReadingPracticePage({ slug }: { slug: string }) {
       <div className="fixed inset-x-0 bottom-16 top-16 z-10 flex flex-col">
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-yellow-100 bg-white/95 px-4 backdrop-blur-sm">
           <div className="flex min-w-0 items-center gap-3">
-            <Link
-              href="/reading"
+            <button
+              onClick={() => {
+                if (viewMode === "review") {
+                  setViewMode("summary");
+                } else {
+                  router.push("/reading");
+                }
+              }}
               aria-label="Quay lại"
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-yellow-50"
             >
               <ArrowLeft className="h-4 w-4" />
-            </Link>
+            </button>
             <div className="min-w-0">
               <p className="truncate text-sm font-bold">{passage.title}</p>
               <p className="text-[11px] text-gray-400">
@@ -584,8 +679,38 @@ export function ReadingPracticePage({ slug }: { slug: string }) {
             ref={panelsRef}
             className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row"
           >
+            {/* Mobile Tab Navigation segmented selector */}
+            <div className="flex h-12 shrink-0 items-center justify-center border-b border-yellow-100 bg-white px-4 lg:hidden">
+              <div className="flex w-full max-w-sm rounded-xl bg-amber-50 p-1 border border-amber-100/50">
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("passage")}
+                  className={`flex-1 rounded-lg py-1.5 text-center text-xs font-bold transition-all ${
+                    mobileTab === "passage"
+                      ? "bg-white text-gray-900 shadow-sm border border-amber-100"
+                      : "text-gray-500 hover:text-gray-900"
+                  }`}
+                >
+                  📖 Bài đọc
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("questions")}
+                  className={`flex-1 rounded-lg py-1.5 text-center text-xs font-bold transition-all ${
+                    mobileTab === "questions"
+                      ? "bg-white text-gray-900 shadow-sm border border-amber-100"
+                      : "text-gray-500 hover:text-gray-900"
+                  }`}
+                >
+                  ✍️ Câu hỏi ({answeredCount}/{totalQuestions})
+                </button>
+              </div>
+            </div>
+
             <section
-              className="flex min-h-0 flex-col border-b border-amber-100 bg-[rgb(255,250,246)] transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:border-b-0"
+              className={`flex min-h-0 flex-col border-b border-amber-100 bg-[rgb(255,250,246)] transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:border-b-0 ${
+                mobileTab === "passage" ? "flex" : "hidden lg:flex"
+              }`}
               style={{ "--passage-width": `${passageWidth}%` } as CSSProperties}
             >
               <div
@@ -617,7 +742,11 @@ export function ReadingPracticePage({ slug }: { slug: string }) {
                   </h2>
                 </div>
                 <div className="space-y-5 text-[15px] leading-7 text-gray-700 selection:bg-yellow-200 selection:text-gray-900">
-                  <PassageContent passage={passage} annotations={annotations} />
+                  <PassageContent 
+                    passage={passage} 
+                    annotations={annotations} 
+                    highlightedSectionId={highlightedSectionId} 
+                  />
                 </div>
               </div>
 
@@ -643,33 +772,93 @@ export function ReadingPracticePage({ slug }: { slug: string }) {
               </span>
             </button>
 
-            <section className="reading-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto bg-[rgb(255,250,246)] transition-[flex-basis,width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
+            <section
+              className={`reading-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto bg-[rgb(255,250,246)] transition-[flex-basis,width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                mobileTab === "questions" ? "block" : "hidden lg:block"
+              }`}
+            >
               <div className="mx-auto max-w-3xl px-6 py-8 sm:px-9">
                 <p className="text-xs font-bold uppercase tracking-wider text-yellow-700">
                   Questions 1–{passage.reading_questions.length}
                 </p>
                 <h2 className="mt-2 font-heading text-2xl font-bold">
-                  Choose the correct answer
+                  {viewMode === "review" ? "Xem lại bài làm" : "Choose the correct answer"}
                 </h2>
-                <p className="mt-2 text-sm text-gray-500">
-                  Chọn một đáp án cho mỗi câu hỏi.
-                </p>
+                
+                <div className="mt-2 text-sm text-gray-500 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-100 pb-4">
+                  <span>
+                    {viewMode === "review" 
+                      ? "Phân tích câu trả lời và cách giải chi tiết." 
+                      : "Chọn một đáp án cho mỗi câu hỏi."}
+                  </span>
+                  
+                  {/* Review Mode Filter Tabs */}
+                  {viewMode === "review" && (
+                    <div className="flex gap-1.5 rounded-xl bg-amber-50 border border-amber-100 p-1 shrink-0 self-start sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => setFilterIncorrectOnly(false)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          !filterIncorrectOnly 
+                            ? "bg-white text-gray-900 shadow-sm border border-amber-100" 
+                            : "text-gray-500 hover:text-gray-900"
+                        }`}
+                      >
+                        Tất cả ({totalQuestions})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFilterIncorrectOnly(true)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          filterIncorrectOnly 
+                            ? "bg-white text-rose-600 shadow-sm border border-amber-100" 
+                            : "text-gray-500 hover:text-rose-600"
+                        }`}
+                      >
+                        Sai/Bỏ qua ({incorrectCount + skippedCount})
+                      </button>
+                    </div>
+                  )}
+                </div>
 
-                <div className="mt-7 space-y-8">
-                  {passage.reading_questions.map((question, index) => (
-                    <QuestionCard
-                      key={question.id}
-                      question={question}
-                      number={index + 1}
-                      answer={answers[question.id]}
-                      onAnswer={(value) =>
-                        void chooseAnswer(question.id, value)
-                      }
-                      refCallback={(node) => {
-                        if (node) questionRefs.current.set(question.id, node);
-                      }}
-                    />
-                  ))}
+                <div className="mt-7 space-y-6">
+                  {viewMode === "review"
+                    ? passage.reading_questions
+                        .filter((q) => {
+                          if (!filterIncorrectOnly) return true;
+                          const ansObj = userAnswersMap.get(q.id);
+                          return !ansObj || !ansObj.is_correct;
+                        })
+                        .map((question, index) => {
+                          const number = passage.reading_questions.findIndex((q) => q.id === question.id) + 1;
+                          const ansObj = userAnswersMap.get(question.id);
+                          return (
+                            <ReviewQuestionCard
+                              key={question.id}
+                              question={question}
+                              number={number}
+                              userAnswerObj={ansObj}
+                              onLocate={handleLocateEvidence}
+                              refCallback={(node) => {
+                                if (node) questionRefs.current.set(question.id, node);
+                              }}
+                            />
+                          );
+                        })
+                    : passage.reading_questions.map((question, index) => (
+                        <QuestionCard
+                          key={question.id}
+                          question={question}
+                          number={index + 1}
+                          answer={answers[question.id]}
+                          onAnswer={(value) =>
+                            void chooseAnswer(question.id, value)
+                          }
+                          refCallback={(node) => {
+                            if (node) questionRefs.current.set(question.id, node);
+                          }}
+                        />
+                      ))}
                 </div>
               </div>
             </section>
@@ -697,12 +886,24 @@ export function ReadingPracticePage({ slug }: { slug: string }) {
         answeredCount={answeredCount}
         submitting={submitting}
         result={result}
-        onQuestion={(questionId) =>
-          questionRefs.current
-            .get(questionId)
-            ?.scrollIntoView({ behavior: "smooth", block: "center" })
-        }
+        viewMode={viewMode}
+        userAnswersMap={userAnswersMap}
+        onQuestion={(questionId) => {
+          if (viewMode === "review" && filterIncorrectOnly) {
+            const ansObj = userAnswersMap.get(questionId);
+            if (ansObj && ansObj.is_correct) {
+              setFilterIncorrectOnly(false);
+            }
+          }
+          setMobileTab("questions");
+          window.setTimeout(() => {
+            questionRefs.current
+              .get(questionId)
+              ?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 50);
+        }}
         onSubmit={() => void handleSubmit()}
+        onBackToSummary={() => setViewMode("summary")}
       />
 
       {noteComposer && (
@@ -765,6 +966,13 @@ export function ReadingPracticePage({ slug }: { slug: string }) {
             flex: none;
           }
         }
+        @keyframes pulse-subtle {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.95; transform: scale(1.005); }
+        }
+        .animate-pulse-subtle {
+          animation: pulse-subtle 2s infinite ease-in-out;
+        }
       `}</style>
     </main>
   );
@@ -773,9 +981,11 @@ export function ReadingPracticePage({ slug }: { slug: string }) {
 function PassageContent({
   passage,
   annotations,
+  highlightedSectionId,
 }: {
   passage: ReadingPassageDetail;
   annotations: Annotation[];
+  highlightedSectionId?: string | null;
 }) {
   let wordIndex = -1;
 
@@ -1199,40 +1409,73 @@ function QuestionNavigator({
   answeredCount,
   submitting,
   result,
+  viewMode,
+  userAnswersMap,
   onQuestion,
   onSubmit,
+  onBackToSummary,
 }: {
   questions: ReadingQuestionWithOptions[];
   answers: Record<string, string>;
   answeredCount: number;
   submitting: boolean;
   result: { correct: number; total: number } | null;
+  viewMode: "practice" | "review" | "summary";
+  userAnswersMap?: Map<string, UserReadingAnswer>;
   onQuestion: (id: string) => void;
   onSubmit: () => void;
+  onBackToSummary?: () => void;
 }) {
   return (
     <footer className="fixed inset-x-0 bottom-0 z-50 flex h-16 items-center border-t border-yellow-100 bg-white/95 px-3 backdrop-blur sm:px-5">
       <div className="mx-auto flex w-full max-w-7xl items-center gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1">
-          {questions.map((question, index) => (
-            <button
-              key={question.id}
-              type="button"
-              onClick={() => onQuestion(question.id)}
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition-colors duration-300 ${answers[question.id] ? "border-amber-200 bg-amber-200 text-amber-950" : "border-gray-200 bg-white text-gray-500 hover:border-amber-200 hover:bg-amber-50"}`}
-            >
-              {index + 1}
-            </button>
-          ))}
+          {questions.map((question, index) => {
+            let btnStyle = "border-gray-200 bg-white text-gray-500 hover:border-amber-200 hover:bg-amber-50";
+            if (viewMode === "review" && userAnswersMap) {
+              const ansObj = userAnswersMap.get(question.id);
+              if (ansObj) {
+                if (ansObj.is_correct) {
+                  btnStyle = "border-emerald-200 bg-emerald-100 text-emerald-800 hover:bg-emerald-200/60";
+                } else if (!ansObj.user_answer || ansObj.user_answer.trim() === "") {
+                  btnStyle = "border-gray-300 bg-gray-100 text-gray-600 hover:bg-gray-200/60";
+                } else {
+                  btnStyle = "border-rose-200 bg-rose-100 text-rose-800 hover:bg-rose-200/60";
+                }
+              }
+            } else if (answers[question.id]) {
+              btnStyle = "border-amber-200 bg-amber-200 text-amber-950";
+            }
+
+            return (
+              <button
+                key={question.id}
+                type="button"
+                onClick={() => onQuestion(question.id)}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition-colors duration-300 ${btnStyle}`}
+              >
+                {index + 1}
+              </button>
+            );
+          })}
         </div>
-        {result ? (
+        
+        {viewMode === "review" ? (
+          <button
+            type="button"
+            onClick={onBackToSummary}
+            className="flex shrink-0 items-center gap-2 rounded-full bg-gray-900 px-5 py-2.5 text-sm font-bold text-yellow-300 hover:bg-gray-800 transition-colors"
+          >
+            Quay lại Bảng điểm
+          </button>
+        ) : result ? (
           <div className="shrink-0 rounded-full bg-emerald-100 px-4 py-2 text-sm font-bold text-emerald-700">
             {result.correct}/{result.total} đúng
           </div>
         ) : (
           <button
             type="button"
-            disabled={answeredCount !== questions.length || submitting}
+            disabled={answeredCount === 0 || submitting}
             onClick={onSubmit}
             className="flex shrink-0 items-center gap-2 rounded-full bg-gray-900 px-5 py-2.5 text-sm font-bold text-yellow-300 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
           >
@@ -1272,4 +1515,226 @@ function getPopupPosition(
       ? rect.bottom + 10
       : Math.max(76, rect.top - preferredHeight - 10);
   return { x, y };
+}
+
+function findEvidenceSection(
+  explanation: string | null,
+  sections: ReadingPassageSection[]
+): string | null {
+  if (!explanation) return null;
+  const normalized = explanation.toLowerCase();
+  
+  for (const sec of sections) {
+    const label = sec.label.toLowerCase();
+    const patterns = [
+      `paragraph ${label}`,
+      `đoạn ${label}`,
+      `đoạn văn ${label}`,
+      `bước ${label}`,
+      `section ${label}`
+    ];
+    if (patterns.some(pattern => normalized.includes(pattern))) {
+      return sec.id;
+    }
+  }
+  
+  const paragraphMatch = normalized.match(/(paragraph|đoạn|section)\s+([a-g])/i);
+  if (paragraphMatch && paragraphMatch[2]) {
+    const targetLabel = paragraphMatch[2].toUpperCase();
+    const matchedSec = sections.find(s => s.label.toUpperCase() === targetLabel);
+    if (matchedSec) return matchedSec.id;
+  }
+  return null;
+}
+
+function parseExplanationSteps(explanation: string | null) {
+  if (!explanation) return [];
+  const stepRegex = /(Bước\s+\d+|Step\s+\d+):/gi;
+  const parts = explanation.split(stepRegex);
+  if (parts.length > 1) {
+    const steps: { title: string; content: string }[] = [];
+    for (let i = 1; i < parts.length; i += 2) {
+      const title = parts[i].trim();
+      const content = parts[i + 1]?.trim() || "";
+      if (content) {
+        steps.push({ title, content });
+      }
+    }
+    return steps;
+  }
+  return explanation.split(/\n+/).map((line, idx) => ({
+    title: `Phân tích ${idx + 1}`,
+    content: line.trim()
+  })).filter(s => s.content.length > 0);
+}
+
+function ReviewQuestionCard({
+  question,
+  number,
+  userAnswerObj,
+  onLocate,
+  refCallback,
+}: {
+  question: ReadingQuestionWithOptions;
+  number: number;
+  userAnswerObj?: UserReadingAnswer & {
+    reading_questions: {
+      explanation: string | null;
+      reading_question_answers: ReadingQuestionAnswer[];
+    };
+  };
+  onLocate: (explanation: string | null) => void;
+  refCallback: (node: HTMLDivElement | null) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const userAnswer = userAnswerObj?.user_answer ?? "";
+  const isCorrect = userAnswerObj?.is_correct ?? false;
+  const isSkipped = !userAnswer || userAnswer.trim() === "";
+  
+  const correctAnswer = userAnswerObj?.reading_questions?.reading_question_answers?.[0]?.answer_text ?? "";
+
+  const steps = useMemo(() => {
+    return parseExplanationSteps(userAnswerObj?.reading_questions?.explanation || question.explanation);
+  }, [userAnswerObj, question]);
+
+  return (
+    <div ref={refCallback} className="scroll-mt-24 rounded-2xl border border-amber-100 bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        {isCorrect ? (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-sm font-bold">
+            {number}
+          </span>
+        ) : isSkipped ? (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500 text-sm font-bold">
+            {number}
+          </span>
+        ) : (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700 text-sm font-bold">
+            {number}
+          </span>
+        )}
+        
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+              Câu {number}
+            </span>
+            {isCorrect ? (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                <CheckCircle2 className="w-3 h-3 shrink-0" /> Đúng rồi! 🍯
+              </span>
+            ) : isSkipped ? (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 bg-gray-50 px-2.5 py-1 rounded-full border border-gray-200">
+                <HelpCircle className="w-3 h-3 shrink-0" /> Chưa làm 💤
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-100">
+                <XCircle className="w-3 h-3 shrink-0" /> Sai rồi 🐝
+              </span>
+            )}
+          </div>
+          
+          <p className="mt-2 text-sm font-semibold leading-6 text-gray-800">
+            {question.prompt}
+          </p>
+          
+          <div className="mt-3 space-y-2">
+            {question.reading_question_options.map((option) => {
+              const isOptionCorrect = option.option_key === correctAnswer;
+              const isOptionSelected = option.option_key === userAnswer;
+              
+              let borderStyle = "border-gray-200 bg-white text-gray-700";
+              let badge = null;
+              
+              if (isOptionCorrect) {
+                borderStyle = "border-emerald-300 bg-emerald-50/50 text-emerald-950 font-medium";
+                badge = (
+                  <span className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-white text-xs font-black text-emerald-600">
+                    ✓
+                  </span>
+                );
+              } else if (isOptionSelected && !isCorrect) {
+                borderStyle = "border-rose-300 bg-rose-50/40 text-rose-950";
+                badge = (
+                  <span className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white text-xs font-black text-rose-600">
+                    X
+                  </span>
+                );
+              }
+              
+              return (
+                <div
+                  key={option.id}
+                  className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${borderStyle}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="radio"
+                      disabled
+                      checked={isOptionSelected}
+                      className={`mt-0.5 h-4 w-4 shrink-0 ${isOptionCorrect ? "accent-emerald-500" : "accent-rose-500"}`}
+                    />
+                    <span>
+                      <strong className="mr-2">{option.option_key}</strong>
+                      {option.option_text !== option.option_key && option.option_text}
+                    </span>
+                  </div>
+                  {badge}
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="mt-4 border-t border-gray-100 pt-3">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 px-3.5 py-2 rounded-xl transition-all"
+              >
+                Giải thích của StudyBee 📖
+                {isOpen ? (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                )}
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => onLocate(userAnswerObj?.reading_questions?.explanation || question.explanation)}
+                className="flex items-center gap-1.5 text-xs font-bold text-yellow-700 hover:text-yellow-900 bg-yellow-50 hover:bg-yellow-100 border border-yellow-100 px-3.5 py-2 rounded-xl transition-all"
+              >
+                Xem vị trí bài đọc 🔍
+              </button>
+            </div>
+            
+            {isOpen && (
+              <div className="mt-3 bg-[#FFFDF7] border border-yellow-100 rounded-2xl p-4 text-sm text-gray-700 space-y-3 animate-scale-up">
+                <div className="flex items-center gap-1.5 border-b border-yellow-50 pb-2 mb-2">
+                  <Sparkles className="w-4 h-4 text-yellow-500" />
+                  <span className="font-bold text-xs text-yellow-800 uppercase tracking-wide">
+                    Hướng dẫn giải chi tiết
+                  </span>
+                </div>
+                {steps.map((step, idx) => (
+                  <div key={idx} className="space-y-1">
+                    <h5 className="font-bold text-xs text-gray-800 flex items-center gap-1.5">
+                      <span className="inline-flex w-1.5 h-1.5 rounded-full bg-yellow-400" />
+                      {step.title}
+                    </h5>
+                    <p className="pl-3 text-xs leading-5 text-gray-600 whitespace-pre-line">
+                      {step.content}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+        </div>
+      </div>
+    </div>
+  );
 }

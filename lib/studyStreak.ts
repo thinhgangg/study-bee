@@ -89,11 +89,9 @@ export async function fetchStudyStreak(
   const todayActivity = activity.find((item) => item.activityDate === today);
   const reviewedToday = todayActivity?.reviewedCount ?? 0;
   const remainingDueCount = dueResult.count ?? 0;
-  const todayGoal = Math.max(
-    todayActivity?.dueCountAtStart ?? 0,
-    reviewedToday + remainingDueCount,
-    0,
-  );
+  const todayGoal = todayActivity
+    ? todayActivity.dueCountAtStart
+    : remainingDueCount;
   const todayReviewed = Math.min(
     reviewedToday,
     todayGoal,

@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -111,6 +112,26 @@ function formatDuration(totalSeconds: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+const cardVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 120 : -120,
+    opacity: 0,
+    scale: 0.9,
+  }),
+
+  center: {
+    x: 0,
+    opacity: 1,
+    scale: 1,
+  },
+
+  exit: (direction: number) => ({
+    x: direction > 0 ? -120 : 120,
+    opacity: 0,
+    scale: 0.95,
+  }),
+};
+
 export default function StudyPage({
   params,
 }: {
@@ -130,6 +151,8 @@ export default function StudyPage({
   const [cards, setCards] = useState<StudyCard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [slideDirection, setSlideDirection] = useState(0); // 1 = next, -1 = prev
+  const [animKey, setAnimKey] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
   const [reviewResults, setReviewResults] = useState<ReviewResults>({});
@@ -261,10 +284,13 @@ export default function StudyPage({
 
   const goPrevious = useCallback(() => {
     if (cards.length === 0) return;
+    if (currentIndex === 0) return;
     setCompleted(false);
+    setSlideDirection(-1);
+    setAnimKey((value) => value + 1);
     setCurrentIndex((index) => Math.max(index - 1, 0));
     setFlipped(false);
-  }, [cards.length]);
+  }, [cards.length, currentIndex]);
 
   const goNext = useCallback(() => {
     if (cards.length === 0) return;
@@ -278,6 +304,8 @@ export default function StudyPage({
       return;
     }
 
+    setSlideDirection(1);
+    setAnimKey((value) => value + 1);
     setCurrentIndex((index) => index + 1);
     setFlipped(false);
   }, [cards.length, currentIndex]);
@@ -299,6 +327,7 @@ export default function StudyPage({
     setCurrentIndex(0);
     setFlipped(false);
     setCompleted(false);
+    setSlideDirection(0);
   }, []);
 
   useEffect(() => {
@@ -533,19 +562,39 @@ export default function StudyPage({
             className="group w-full max-w-[640px] rounded-[2rem] text-left outline-none focus-visible:ring-4 focus-visible:ring-yellow-200"
             aria-label={flipped ? "Xem mặt trước flashcard" : "Lật flashcard"}
           >
-            <div className="[perspective:1400px]">
-              <div
-                className={`relative h-[clamp(340px,52dvh,480px)] transition-transform duration-500 ease-out [transform-style:preserve-3d] sm:h-[clamp(380px,52dvh,520px)] lg:h-[clamp(380px,54vh,520px)] ${
-                  flipped ? "[transform:rotateY(180deg)]" : ""
-                }`}
+            <div className="relative [perspective:1400px]">
+              <AnimatePresence
+                initial={false}
+                mode="popLayout"
+                custom={slideDirection}
               >
-                <div className="absolute inset-0 overflow-hidden rounded-[2rem] border border-yellow-200 bg-white p-6 shadow-xl shadow-yellow-100/70 transition group-hover:-translate-y-0.5 group-hover:border-yellow-300 sm:p-9 [backface-visibility:hidden]">
-                  <CardFront card={currentCard} />
-                </div>
-                <div className="absolute inset-0 overflow-hidden rounded-[2rem] border border-yellow-200 bg-white p-5 shadow-xl shadow-yellow-100/70 transition group-hover:-translate-y-0.5 group-hover:border-yellow-300 sm:p-8 [backface-visibility:hidden] [transform:rotateY(180deg)]">
-                  <CardBack card={currentCard} hintItems={hintItems} />
-                </div>
-              </div>
+                <motion.div
+                  key={animKey}
+                  custom={slideDirection}
+                  variants={cardVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{
+                    type: "spring",
+                    stiffness: 280,
+                    damping: 24,
+                  }}
+                >
+                  <div
+                    className={`relative h-[clamp(360px,54dvh,500px)] transition-transform duration-500 ease-out [transform-style:preserve-3d] sm:h-[clamp(400px,54dvh,540px)] lg:h-[clamp(400px,56vh,540px)] ${
+                      flipped ? "[transform:rotateY(180deg)]" : ""
+                    }`}
+                  >
+                    <div className="absolute inset-0 overflow-hidden rounded-[2rem] border border-yellow-200 bg-white p-6 shadow-xl shadow-yellow-100/70 transition group-hover:-translate-y-0.5 group-hover:border-yellow-300 sm:p-9 [backface-visibility:hidden]">
+                      <CardFront card={currentCard} />
+                    </div>
+                    <div className="absolute inset-0 overflow-hidden rounded-[2rem] border border-yellow-200 bg-white p-5 shadow-xl shadow-yellow-100/70 transition group-hover:-translate-y-0.5 group-hover:border-yellow-300 sm:p-8 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+                      <CardBack card={currentCard} hintItems={hintItems} />
+                    </div>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
             </div>
           </div>
 
@@ -758,7 +807,7 @@ function StudySummary({
             <div
               key={i}
               style={{ width: `${seg.percentage}%` }}
-               className={`h-full ${
+              className={`h-full ${
                 seg.quality === 1
                   ? "bg-rose-400"
                   : seg.quality === 3

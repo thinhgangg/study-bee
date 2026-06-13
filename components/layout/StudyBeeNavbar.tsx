@@ -6,7 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   Bell,
   BookA,
+  CheckCheck,
   ChevronDown,
+  Clock3,
   LogOut,
   Menu,
   Settings,
@@ -18,6 +20,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import { StudyBeeLogo } from "@/components/StudyBeeLogo";
+import { supabase } from "@/lib/supabase";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +37,12 @@ const navItems = [
   { label: "Bảng giá", href: "/#pricing", icon: CreditCard },
 ];
 
+interface ReviewNotification {
+  deckId: string;
+  deckName: string;
+  dueCount: number;
+}
+
 interface StudyBeeNavbarProps {
   userEmail?: string;
   loadingAuth?: boolean;
@@ -49,9 +58,142 @@ export function StudyBeeNavbar({
 }: StudyBeeNavbarProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifications, setNotifications] = useState<ReviewNotification[]>([]);
+  const [notificationSignature, setNotificationSignature] = useState("");
+  const [notificationsRead, setNotificationsRead] = useState(true);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const isLoggedIn = Boolean(userEmail);
   const initials = userEmail.trim()[0]?.toUpperCase() || "B";
+  const totalDueCount = notifications.reduce(
+    (total, notification) => total + notification.dueCount,
+    0,
+  );
+  const hasUnreadNotifications = totalDueCount > 0 && !notificationsRead;
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    let cancelled = false;
+
+    async function loadNotifications() {
+      setLoadingNotifications(true);
+
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user || cancelled) return;
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("auth_user_id", user.id)
+          .maybeSingle();
+
+        if (!profile || cancelled) return;
+
+        const now = new Date().toISOString();
+        const { data: reviews, error: reviewsError } = await supabase
+          .from("card_reviews")
+          .select("card_id, next_review_at")
+          .eq("user_id", profile.id)
+          .not("next_review_at", "is", null)
+          .lte("next_review_at", now);
+
+        if (reviewsError) throw reviewsError;
+
+        const cardIds = (reviews ?? []).map((review) => review.card_id as string);
+
+        if (cardIds.length === 0) {
+          if (!cancelled) {
+            setNotifications([]);
+            setNotificationSignature("");
+            setNotificationsRead(true);
+          }
+          return;
+        }
+
+        const { data: cards, error: cardsError } = await supabase
+          .from("cards")
+          .select("id, deck_id")
+          .in("id", cardIds);
+
+        if (cardsError) throw cardsError;
+
+        const deckIds = [
+          ...new Set((cards ?? []).map((card) => card.deck_id as string)),
+        ];
+
+        if (deckIds.length === 0) {
+          if (!cancelled) {
+            setNotifications([]);
+            setNotificationSignature("");
+            setNotificationsRead(true);
+          }
+          return;
+        }
+
+        const { data: decks, error: decksError } = await supabase
+          .from("decks")
+          .select("id, name")
+          .in("id", deckIds);
+
+        if (decksError) throw decksError;
+
+        const deckNames = new Map(
+          (decks ?? []).map((deck) => [deck.id as string, deck.name as string]),
+        );
+        const dueByDeck = new Map<string, number>();
+
+        for (const card of cards ?? []) {
+          const deckId = card.deck_id as string;
+          dueByDeck.set(deckId, (dueByDeck.get(deckId) ?? 0) + 1);
+        }
+
+        const nextNotifications = [...dueByDeck.entries()]
+          .map(([deckId, dueCount]) => ({
+            deckId,
+            deckName: deckNames.get(deckId) ?? "Bộ từ vựng",
+            dueCount,
+          }))
+          .sort((left, right) => right.dueCount - left.dueCount);
+        const signature = (reviews ?? [])
+          .map(
+            (review) =>
+              `${review.card_id}:${review.next_review_at ?? ""}`,
+          )
+          .sort()
+          .join("|");
+        const storageKey = `studybee:notifications:read:${user.id}`;
+        const readSignature = window.localStorage.getItem(storageKey);
+
+        if (!cancelled) {
+          setNotifications(nextNotifications);
+          setNotificationSignature(signature);
+          setNotificationsRead(readSignature === signature);
+        }
+      } catch {
+        if (!cancelled) {
+          setNotifications([]);
+          setNotificationSignature("");
+          setNotificationsRead(true);
+        }
+      } finally {
+        if (!cancelled) setLoadingNotifications(false);
+      }
+    }
+
+    void loadNotifications();
+    const handleFocus = () => void loadNotifications();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [isLoggedIn, pathname]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -71,6 +213,20 @@ export function StudyBeeNavbar({
   async function handleSignOut() {
     await onSignOut?.();
     setMobileMenuOpen(false);
+  }
+
+  async function markAllNotificationsRead() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user || !notificationSignature) return;
+
+    window.localStorage.setItem(
+      `studybee:notifications:read:${user.id}`,
+      notificationSignature,
+    );
+    setNotificationsRead(true);
   }
 
   return (
@@ -111,14 +267,81 @@ export function StudyBeeNavbar({
             <div className="h-10 w-36 animate-pulse rounded-full bg-gray-100" />
           ) : isLoggedIn ? (
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                aria-label="Thông báo"
-                className="relative flex h-10 w-10 items-center justify-center rounded-full border border-yellow-100 bg-white text-gray-600 shadow-sm shadow-yellow-100/50 transition-colors hover:bg-yellow-50 hover:text-gray-900"
-              >
-                <Bell className="h-4 w-4" />
-                <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-yellow-400 ring-2 ring-white" />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Thông báo"
+                    className="relative flex h-10 w-10 items-center justify-center rounded-full border border-yellow-100 bg-white text-gray-600 shadow-sm shadow-yellow-100/50 transition-colors hover:bg-yellow-50 hover:text-gray-900"
+                  >
+                    <Bell className="h-4 w-4" />
+                    {hasUnreadNotifications && (
+                      <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-yellow-400 ring-2 ring-white" />
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80 p-0">
+                  <div className="flex items-center justify-between border-b border-yellow-100 px-4 py-3">
+                    <div>
+                      <p className="font-bold text-gray-900">Thông báo</p>
+                      <p className="text-xs text-gray-500">
+                        {totalDueCount > 0
+                          ? `${totalDueCount} từ cần ôn hôm nay`
+                          : "Bạn đã hoàn thành lịch ôn"}
+                      </p>
+                    </div>
+                    {totalDueCount > 0 && !notificationsRead && (
+                      <button
+                        type="button"
+                        onClick={() => void markAllNotificationsRead()}
+                        className="text-xs font-bold text-yellow-700 hover:text-yellow-800"
+                      >
+                        Đọc tất cả
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto p-2">
+                    {loadingNotifications ? (
+                      <div className="space-y-2 p-2">
+                        <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
+                        <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
+                      </div>
+                    ) : notifications.length > 0 ? (
+                      notifications.map((notification) => (
+                        <DropdownMenuItem key={notification.deckId} asChild>
+                          <Link
+                            href={`/vocabulary/${notification.deckId}/study`}
+                            className="flex cursor-pointer items-start gap-3 rounded-xl px-3 py-3"
+                          >
+                            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-yellow-100 text-yellow-700">
+                              <Clock3 className="h-4 w-4" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate font-bold text-gray-900">
+                                {notification.deckName}
+                              </span>
+                              <span className="block text-xs text-gray-500">
+                                Có {notification.dueCount} từ cần ôn hôm nay
+                              </span>
+                            </span>
+                          </Link>
+                        </DropdownMenuItem>
+                      ))
+                    ) : (
+                      <div className="px-4 py-8 text-center">
+                        <CheckCheck className="mx-auto h-8 w-8 text-emerald-500" />
+                        <p className="mt-2 text-sm font-bold text-gray-900">
+                          Không có thông báo mới
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Hiện chưa có từ nào đến hạn ôn.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

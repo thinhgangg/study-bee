@@ -46,6 +46,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase";
+import { calculateReviewSchedule } from "@/lib/spacedRepetition";
 import {
   fetchBreadcrumb,
   fetchNode,
@@ -110,11 +111,11 @@ interface RelatedTerm {
 
 function getCardStatus(review?: CardReview): VocabularyStatus {
   if (!review?.reviewed_at) return "learning";
-  if (typeof review.quality === "number" && review.quality >= 5) {
-    return "mastered";
-  }
   if (review.next_review_at && new Date(review.next_review_at) <= new Date()) {
     return "review";
+  }
+  if (typeof review.quality === "number" && review.quality >= 5) {
+    return "mastered";
   }
   return "learning";
 }
@@ -371,30 +372,33 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
       if (!profile) return;
 
       const now = new Date();
-      const nextReviewAt = new Date(now);
-      nextReviewAt.setDate(now.getDate() + 7);
-
       const { data: existingReview } = await supabase
         .from("card_reviews")
-        .select("id, repetition")
+        .select("id, repetition, interval_days, ease_factor")
         .eq("user_id", profile.id)
         .eq("card_id", card.id)
         .maybeSingle();
 
-      const repetition =
-        typeof existingReview?.repetition === "number"
-          ? existingReview.repetition + 1
-          : 1;
+      const schedule = calculateReviewSchedule(
+        5,
+        {
+          repetition: existingReview?.repetition ?? 0,
+          intervalDays: existingReview?.interval_days ?? 0,
+          easeFactor: existingReview?.ease_factor ?? 2.5,
+        },
+        now,
+      );
 
       const { error: upsertError } = await supabase.from("card_reviews").upsert(
         {
           user_id: profile.id,
           card_id: card.id,
           quality: 5,
-          interval_days: 7,
-          next_review_at: nextReviewAt.toISOString(),
+          interval_days: schedule.intervalDays,
+          ease_factor: schedule.easeFactor,
+          next_review_at: schedule.nextReviewAt.toISOString(),
           reviewed_at: now.toISOString(),
-          repetition,
+          repetition: schedule.repetition,
         },
         { onConflict: "user_id,card_id" },
       );
@@ -412,7 +416,7 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
                 status: "mastered",
                 review_quality: 5,
                 reviewed_at: now.toISOString(),
-                next_review_at: nextReviewAt.toISOString(),
+                next_review_at: schedule.nextReviewAt.toISOString(),
               }
             : item,
         ),
@@ -424,7 +428,7 @@ function VocabularyDeckPage({ deckId }: { deckId: string }) {
               status: "mastered",
               review_quality: 5,
               reviewed_at: now.toISOString(),
-              next_review_at: nextReviewAt.toISOString(),
+              next_review_at: schedule.nextReviewAt.toISOString(),
             }
           : current,
       );
@@ -694,12 +698,25 @@ function DeckHeader({
   onCopy: () => void | Promise<void>;
   onReport: () => void | Promise<void>;
 }) {
+  const hasNewCards = progress.studied < progress.total;
+  const studyAllCards =
+    progress.total > 0 && !hasNewCards && progress.due === 0;
   const studyLabel =
-    progress.percent <= 0
+    progress.studied === 0
       ? "Học ngay"
-      : progress.percent >= 100
-        ? "Ôn tập"
-        : "Học tiếp";
+      : progress.due > 0
+        ? `Ôn ${progress.due} từ`
+        : hasNewCards
+          ? "Học tiếp"
+          : "Học lại";
+
+  const studyParams = new URLSearchParams();
+  if (readOnly) {
+    studyParams.set("source", source === "saved" ? "saved" : "community");
+  }
+  if (studyAllCards) studyParams.set("mode", "all");
+  const studyQuery = studyParams.toString();
+  const studyHref = `/vocabulary/${deckId}/study${studyQuery ? `?${studyQuery}` : ""}`;
 
   return (
     <section className="rounded-2xl border border-yellow-100 bg-white p-4 shadow-sm shadow-yellow-100/50 lg:p-5">
@@ -725,11 +742,7 @@ function DeckHeader({
 
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
           <Link
-            href={
-              readOnly
-                ? `/vocabulary/${deckId}/study?source=${source === "saved" ? "saved" : "community"}`
-                : `/vocabulary/${deckId}/study`
-            }
+            href={studyHref}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-gray-900 px-5 text-sm font-bold text-yellow-300 shadow-lg shadow-gray-900/10 transition-colors hover:bg-gray-700"
           >
             <PlayCircle className="h-4 w-4" />

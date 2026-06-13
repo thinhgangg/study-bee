@@ -30,6 +30,10 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/lib/supabase";
+import {
+  calculateReviewSchedule,
+  isCardDue,
+} from "@/lib/spacedRepetition";
 import { fetchNode } from "@/lib/vocabularyTree";
 
 interface Deck {
@@ -57,6 +61,14 @@ interface StudyCard {
 
 interface Profile {
   id: string;
+}
+
+interface CardReview {
+  card_id: string;
+  repetition: number | null;
+  interval_days: number | null;
+  ease_factor: number | null;
+  next_review_at: string | null;
 }
 
 type ReviewResults = Record<string, number>;
@@ -89,13 +101,6 @@ const reviewOptions = [
 ];
 
 const relatedSeparators = [" — ", " – ", " - ", ": ", "："];
-
-function getIntervalDays(quality: number) {
-  if (quality <= 2) return 1;
-  if (quality === 3) return 2;
-  if (quality === 4) return 4;
-  return 7;
-}
 
 function getEnglishLabel(value: string) {
   const trimmed = value.trim();
@@ -141,12 +146,18 @@ export default function StudyPage({
   const router = useRouter();
   const searchParams = useSearchParams();
   const source = searchParams.get("source");
+  const studyAllCards = searchParams.get("mode") === "all";
   const backHref =
     source === "community" || source === "saved"
       ? `/vocabulary/${deckId}?source=${source}`
       : `/vocabulary/${deckId}`;
+  const studyAllHref =
+    source === "community" || source === "saved"
+      ? `/vocabulary/${deckId}/study?source=${source}&mode=all`
+      : `/vocabulary/${deckId}/study?mode=all`;
   const [deck, setDeck] = useState<Deck | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [totalCardCount, setTotalCardCount] = useState(0);
   const [allCards, setAllCards] = useState<StudyCard[]>([]);
   const [cards, setCards] = useState<StudyCard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -245,6 +256,36 @@ export default function StudyPage({
 
       if (cardsError) throw cardsError;
 
+      const loadedCards = (cardData ?? []) as StudyCard[];
+      setTotalCardCount(loadedCards.length);
+      const cardIds = loadedCards.map((card) => card.id);
+      let reviewsByCardId = new Map<string, CardReview>();
+
+      if (cardIds.length > 0) {
+        const { data: reviewData, error: reviewsError } = await supabase
+          .from("card_reviews")
+          .select(
+            "card_id, repetition, interval_days, ease_factor, next_review_at",
+          )
+          .eq("user_id", profileData.id)
+          .in("card_id", cardIds);
+
+        if (reviewsError) throw reviewsError;
+
+        reviewsByCardId = new Map(
+          ((reviewData ?? []) as CardReview[]).map((review) => [
+            review.card_id,
+            review,
+          ]),
+        );
+      }
+
+      const studyCards = studyAllCards
+        ? loadedCards
+        : loadedCards.filter((card) =>
+            isCardDue(reviewsByCardId.get(card.id)?.next_review_at),
+          );
+
       setProfile(profileData as Profile);
       setDeck(
         deckData
@@ -255,9 +296,8 @@ export default function StudyPage({
               description: node.description,
             },
       );
-      const loadedCards = (cardData ?? []) as StudyCard[];
-      setAllCards(loadedCards);
-      setCards(loadedCards);
+      setAllCards(studyCards);
+      setCards(studyCards);
       setCurrentIndex(0);
       setFlipped(false);
       setCompleted(false);
@@ -270,7 +310,7 @@ export default function StudyPage({
     } finally {
       setLoading(false);
     }
-  }, [deckId, router]);
+  }, [deckId, router, studyAllCards]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -369,33 +409,36 @@ export default function StudyPage({
     setError("");
 
     try {
-      const intervalDays = getIntervalDays(quality);
       const now = new Date();
-      const nextReviewAt = new Date(now);
-      nextReviewAt.setDate(now.getDate() + intervalDays);
 
       const { data: existingReview, error: existingError } = await supabase
         .from("card_reviews")
-        .select("id, repetition")
+        .select("id, repetition, interval_days, ease_factor")
         .eq("user_id", profile.id)
         .eq("card_id", currentCard.id)
         .maybeSingle();
 
       if (existingError) throw existingError;
 
-      const repetition =
-        typeof existingReview?.repetition === "number"
-          ? existingReview.repetition + 1
-          : 1;
+      const schedule = calculateReviewSchedule(
+        quality,
+        {
+          repetition: existingReview?.repetition ?? 0,
+          intervalDays: existingReview?.interval_days ?? 0,
+          easeFactor: existingReview?.ease_factor ?? 2.5,
+        },
+        now,
+      );
 
       const reviewPayload = {
         user_id: profile.id,
         card_id: currentCard.id,
         quality,
-        interval_days: intervalDays,
-        next_review_at: nextReviewAt.toISOString(),
+        interval_days: schedule.intervalDays,
+        ease_factor: schedule.easeFactor,
+        next_review_at: schedule.nextReviewAt.toISOString(),
         reviewed_at: now.toISOString(),
-        repetition,
+        repetition: schedule.repetition,
       };
 
       const { error: upsertError } = await supabase
@@ -479,15 +522,49 @@ export default function StudyPage({
     return (
       <StudyShell>
         <CenteredState
-          title="Bộ từ này chưa có từ vựng nào"
-          description="Hãy quay lại bộ từ để thêm từ mới trước khi bắt đầu học."
+          icon={
+            totalCardCount > 0 ? (
+              <Image
+                src="/studybee-mascot.png"
+                alt="StudyBee"
+                width={160}
+                height={160}
+                className="mx-auto h-24 w-24 object-contain sm:h-28 sm:w-28"
+                priority
+              />
+            ) : undefined
+          }
+          title={
+            totalCardCount === 0
+              ? "Bộ từ này chưa có từ vựng nào"
+              : "Hôm nay bạn đã ôn xong"
+          }
+          description={
+            totalCardCount === 0
+              ? "Hãy quay lại bộ từ để thêm từ mới trước khi bắt đầu học."
+              : "Chưa có thẻ nào đến hạn. Hãy quay lại vào lịch ôn tiếp theo."
+          }
           action={
-            <Button
-              asChild
-              className="rounded-full bg-gray-900 font-bold text-yellow-300 hover:bg-gray-700"
-            >
-              <Link href={backHref}>Quay lại bộ từ</Link>
-            </Button>
+            totalCardCount === 0 ? (
+              <Button
+                asChild
+                className="rounded-full bg-gray-900 font-bold text-yellow-300 hover:bg-gray-700"
+              >
+                <Link href={backHref}>Quay lại bộ từ</Link>
+              </Button>
+            ) : (
+              <div className="flex flex-wrap justify-center gap-3">
+                <Button
+                  asChild
+                  className="rounded-full bg-gray-900 font-bold text-yellow-300 hover:bg-gray-700"
+                >
+                  <Link href={studyAllHref}>Học lại tất cả</Link>
+                </Button>
+                <Button asChild variant="outline" className="rounded-full font-bold">
+                  <Link href={backHref}>Quay lại bộ từ</Link>
+                </Button>
+              </div>
+            )
           }
         />
       </StudyShell>
@@ -1125,19 +1202,23 @@ function StudyShell({
 }
 
 function CenteredState({
+  icon,
   title,
   description,
   action,
 }: {
+  icon?: React.ReactNode;
   title: string;
   description: string;
   action: React.ReactNode;
 }) {
   return (
     <div className="relative mx-auto flex min-h-[100dvh] max-w-xl flex-col items-center justify-center px-5 text-center">
-      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-yellow-100 text-yellow-700 shadow-sm">
-        <ImageIcon className="h-8 w-8" />
-      </div>
+      {icon ?? (
+        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-yellow-100 text-yellow-700 shadow-sm">
+          <ImageIcon className="h-8 w-8" />
+        </div>
+      )}
       <h1 className="font-heading text-3xl font-bold text-gray-900">{title}</h1>
       <p className="mt-3 text-sm leading-relaxed text-slate-500">
         {description}

@@ -254,7 +254,7 @@ export function StudyBeeNavbar({
   }
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-yellow-100 bg-white/95 backdrop-blur-sm">
+    <header className="width-before-scroll-bar fixed inset-x-0 top-0 z-50 border-b border-yellow-100 bg-white/95 backdrop-blur-sm">
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 px-4 md:px-5 lg:px-8">
         <div className="min-w-0 shrink-0">
           <StudyBeeLogo

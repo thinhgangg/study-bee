@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Checkbox } from "@/components/ui/checkbox";
+import { HoneycombPattern } from "@/components/ui/honeycomb-pattern";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -61,7 +62,7 @@ export default function LoginPage() {
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#FFFBEB] px-6 py-10 text-gray-900">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(250,204,21,0.3)_1px,transparent_0)] bg-[length:28px_28px]" />
+      <HoneycombPattern />
 
       <div className="relative w-full max-w-[400px]">
         <div className="flex flex-col items-center rounded-3xl border border-yellow-100 bg-white p-7 shadow-2xl shadow-yellow-100/70 md:p-9">
